@@ -3,53 +3,50 @@
 _Last updated: 2026-06-18_
 
 ## What this is
-Third portfolio project (after CredAgent, FraudPulse): a **computer-vision** web app —
-YOLO26 detection on user video (upload + webcam) → detection logs in PostgreSQL → live
-Vite/React/Nivo dashboard. Built to deploy **free** (HF Spaces CPU + Neon Postgres).
-Full intent in `../handoff docs/CV-PROJECT-HANDOFF.md`; design in
-`C:\Users\ethan\.claude\plans\moonlit-crafting-yao.md`.
+Third portfolio project (after CredAgent, FraudPulse): a **hybrid computer-vision** web app.
+- **Live webcam → client-side, real-time on the visitor's GPU** (onnxruntime-web + WebGPU).
+- **Video upload → server-side**, model picker YOLO26 n/s/m/x + YOLOE-26 open-vocabulary.
+- Detections logged to PostgreSQL (SQLite locally). Vite/React/Nivo dashboard.
 
-## State: core pipeline COMPLETE and verified end-to-end (local). Not yet deployed.
+Repo: **https://github.com/EthanJGithub/VisionLog** (pushed, branch `main`).
 
-### Accomplished this session
-- Scaffolded `visionlog/` mirroring FraudPulse conventions (`src/{api,detect}`, `frontend`).
-- **Exported YOLO26n → `models/yolo26n.onnx`** (9.5 MB, committed). Confirmed output is
-  end-to-end `(1,300,6)` = `[x1,y1,x2,y2,score,class]` (NMS-free).
-- Backend: `config.py`, `detect/engine.py` (onnxruntime CPU), `detect/export.py`,
-  `video.py` (decode/sample + size/duration guards), `store.py` (SQLAlchemy,
-  Postgres/SQLite), `api/{main,routes,schemas}.py` (upload + WebSocket webcam).
-- Frontend: Vite+React+Nivo — upload w/ box overlay synced to video time, live webcam
-  (throttled ~4 fps over WS), Nivo bar (class counts) + line (timeline), source feed,
-  health bar. **Builds clean.**
-- Governance: `ARCHITECTURE.md`, `COMPLIANCE.md`, `README.md`, AGPL-3.0 `LICENSE`,
-  `Dockerfile` (HF Spaces, :7860), `.env.example`, `.gitignore`.
+## State: built + verified locally + pushed to GitHub. Live cloud deploy = one auth step away.
 
-### Verification (commands used)
-- `pytest` → **7 passed, 1 warning** (engine, store, api; hermetic). Engine test runs
-  against the real ONNX model.
-- Engine on real `tests/fixtures/bus.jpg` → bus 0.925 + 4 person (0.52–0.92), correct bboxes.
-- **Live server** (`uvicorn src.api.main:app --port 8000`): `POST /api/v1/sources` with a
-  3 s sample video → 15 frames @5fps, **75 detections logged** (60 person + 15 bus);
-  `GET /api/v1/stats` and direct SQLite query both confirm 75 rows persisted.
-- Frontend `npm run build` → OK (442 kB JS). Served SPA at `/` returns 200.
+### Verified this session (commands + numbers)
+- `pytest` → **8 passed** (engine, store, api incl. client-logging + model-select upload).
+- **In-browser WebGPU inference proven** (Playwright + real NVIDIA GPU): YOLO26n loads via
+  onnxruntime-web, output `(1,300,6)`, **≈47.8 fps warm at 640px** (20.9 ms/frame).
+  Confirmed dynamic-shape export is slower → kept static 640 (fastest).
+- **Server upload** (live API): `model=yolo26s` over sample video → 90 detections logged;
+  `/models/*.onnx` served (200); `/stats` aggregates.
+- **Open-vocab (YOLOE-26)** proven in Python: prompts `bus,person,backpack` → correct dets.
+  NOTE: first use downloads a **~570 MB CLIP text encoder** → "full image" only, not free-tier.
+- UI verified via screenshots: dashboard, model pickers, webcam tab, Nivo charts.
 
-### Known gaps / next steps (priority order)
-1. **Browser visual check of the box overlay** is the one unverified piece — Playwright
-   MCP was locked by another session (`Browser is already in use`), so the live overlay
-   wasn't screenshotted. Logic is sound (API fully verified); confirm visually:
-   `uvicorn ... :8000` + `cd frontend && npm run dev`, upload `tests/fixtures/sample_bus.mp4`.
-2. **Verify the Postgres path** end-to-end (only SQLite exercised so far). `psycopg 3.3.4`
-   is installed and the code is driver-agnostic; point `DATABASE_URL` at a Neon DB and
-   re-run an upload.
-3. **Deploy:** push to a public GitHub repo, create an HF Space (Docker). HF needs a
-   README with frontmatter on the Space: `---\nsdk: docker\napp_port: 7860\n---`. Set
-   `DATABASE_URL` (Neon, `postgresql+psycopg://...?sslmode=require`) as a Space secret.
-4. **Roadmap differentiator (deferred):** open-vocabulary / NL "detect only X" control to
-   bridge CV + LLM-agent skills (noted in ARCHITECTURE.md §6).
+### Architecture notes
+- Client detector: [frontend/src/webgpu/detector.js](frontend/src/webgpu/detector.js)
+  (WebGPU→WASM fallback, backend shown in UI, no silent fallback).
+- Webcam logs **sampled** detections (~1/sec) via `/client-sessions` to keep DB lean at 45+fps.
+- Server models: [src/detect/registry.py](src/detect/registry.py) (n/s exported; m/x export on
+  demand: `python -m src.detect.export --all`). Open-vocab: [src/detect/openvocab.py](src/detect/openvocab.py).
+- Client models committed in BOTH `models/` (server) and `frontend/public/models/` (client).
+
+### Deploy — next steps (needs YOUR cloud login; `gh`/HF token not available in this env)
+**Recommended: Hugging Face Spaces (free, full app incl. logging).** Repo README already has
+the HF Docker frontmatter (`sdk: docker`, `app_port: 7860`).
+1. Create a Neon free Postgres DB → copy its `postgresql+psycopg://...?sslmode=require` URL.
+2. Create a new HF Space (SDK: Docker). Add a secret `DATABASE_URL` = that URL.
+3. Push this repo to the Space's git remote (or use the HF GitHub sync). Build serves on :7860.
+   - Webcam works on the visitor's GPU with zero server compute; uploads run on the Space CPU.
+   - Open-vocab on the Space needs the "full image" (swap to `requirements-full.txt`) + ~570MB
+     CLIP download — skip for the lean free Space.
+**Alt: Vercel static** for an instant live *webcam-only* demo (client-side WebGPU). Logging/
+upload need the API, so this is a partial demo unless the API is also hosted.
 
 ### Env gotchas
-- Windows: temp-file unlink after `cv2.VideoCapture` can `PermissionError`; cleanup is
-  best-effort (`except PermissionError: pass`) in `routes.py` + test fixture.
-- In-memory SQLite needs `StaticPool` (in `store.get_engine`) so all threads share one DB.
-- `.venv` on D:, caches under `visionlog/.cache` (HF_HOME/PIP_CACHE_DIR) per CLAUDE.md.
-- Vite dev proxy targets `http://127.0.0.1:8000` with `ws: true` for the webcam stream.
+- ultralytics downloads stray `*.pt` + `mobileclip_blt.ts` (599 MB) into CWD on export/open-vocab
+  → gitignored. Don't commit them.
+- onnxruntime-web wasm/jsep loaded from jsDelivr CDN (pinned 1.26.0) — set in detector.js.
+- Models exported at fixed 640, opset=12 (WebGPU requirement). Dynamic shapes were slower.
+- In-memory SQLite needs `StaticPool`; Windows temp unlink is best-effort.
+- `.venv` on D:, caches under `visionlog/.cache`.

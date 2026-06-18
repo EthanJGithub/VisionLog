@@ -1,3 +1,15 @@
+<!-- Hugging Face Spaces reads this frontmatter when this repo is deployed as a Docker Space. -->
+---
+title: VisionLog
+emoji: 🎥
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+license: agpl-3.0
+---
+
 # VisionLog
 
 **YOLO26 object detection on your video → structured detection logs in PostgreSQL →
