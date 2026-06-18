@@ -1,0 +1,24 @@
+{
+  "name": "visionlog-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "React + Nivo frontend for VisionLog — YOLO26 detection on user video, logged to Postgres",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@nivo/bar": "^0.88.0",
+    "@nivo/core": "^0.88.0",
+    "@nivo/line": "^0.88.0",
+    "onnxruntime-web": "^1.26.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}

@@ -1,0 +1,6 @@
+# Dev-only deps. `ultralytics` is used ONCE to export YOLO26n -> ONNX
+# (src/detect/export.py); it is NOT a runtime dependency.
+-r requirements.txt
+ultralytics>=8.3.0
+pytest>=8.0.0
+httpx>=0.27.0

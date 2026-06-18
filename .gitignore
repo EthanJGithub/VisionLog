@@ -1,0 +1,29 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.cache/
+*.log
+
+# Local data / secrets
+data/*.db
+data/*.db-*
+.env
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+
+# Test artifacts
+tests/fixtures/*.mp4
+.pytest_cache/
+
+# Stray model weights / caches downloaded by ultralytics at export/open-vocab time
+*.pt
+mobileclip*.ts
+*.engine
+
+# Keep the exported ONNX models + sample image (committed for deterministic/demoable builds)
+!models/*.onnx
+!frontend/public/models/*.onnx
+!tests/fixtures/bus.jpg

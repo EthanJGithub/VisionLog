@@ -1,0 +1,11 @@
+**/.venv
+**/node_modules
+**/__pycache__
+**/.cache
+**/*.log
+data/*.db
+data/*.db-*
+frontend/dist
+.git
+.pytest_cache
+tests/fixtures/*.mp4

@@ -1,0 +1,5 @@
+# "Full" server image: adds open-vocabulary (YOLOE-26) support on top of the lean
+# runtime. Pulls in ultralytics + torch and (on first use) a ~570MB CLIP text encoder,
+# so this is NOT the free lean deploy — enable it only where the extra weight is okay.
+-r requirements.txt
+ultralytics>=8.4.0
