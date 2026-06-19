@@ -1,0 +1,12 @@
+# Keep the Vercel upload lean — exclude local scratch, caches, and heavy local-only files.
+.venv
+.cache
+*.log
+**/__pycache__
+models/
+data/*.db
+data/*.db-*
+tests/fixtures/*.mp4
+frontend/node_modules
+.git
+.pytest_cache
