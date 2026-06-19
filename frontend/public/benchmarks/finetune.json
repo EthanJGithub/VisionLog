@@ -1,0 +1,27 @@
+{
+  "dataset": "Construction-PPE (1132 train / 143 val)",
+  "base_model": "yolo26n (COCO-pretrained)",
+  "classes": [
+    "helmet",
+    "gloves",
+    "vest",
+    "boots",
+    "goggles",
+    "none",
+    "Person",
+    "no_helmet",
+    "no_goggle",
+    "no_gloves",
+    "no_boots"
+  ],
+  "epochs": 16,
+  "imgsz": 416,
+  "before": {
+    "map50": 0.0003,
+    "map50_95": 0.0001
+  },
+  "after": {
+    "map50": 0.458,
+    "map50_95": 0.2348
+  }
+}

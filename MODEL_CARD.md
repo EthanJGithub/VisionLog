@@ -44,6 +44,23 @@ tab (`frontend/public/benchmarks/`).
 
 ---
 
+## Domain fine-tune — Construction-PPE (transfer learning)
+
+To show the system can *improve* a model (not just run pretrained weights), YOLO26n was
+fine-tuned on the **Construction-PPE** dataset (1132 train / 143 val; classes: helmet,
+gloves, vest, boots, goggles, Person, no_helmet, …). The COCO-pretrained base has none of
+these classes, so it scores ~0; 16 CPU epochs at 416px teach them. Reproduce:
+`python -m src.train.finetune`.
+
+| | mAP@50 | mAP@50-95 |
+|---|---|---|
+| **before** (COCO base) | 0.03% | 0.01% |
+| **after** (fine-tuned) | **45.8%** | **23.5%** |
+
+The fine-tuned model is exported to ONNX and selectable in the app ("YOLO26n-PPE"), running
+client-side on the user's GPU like the other models. (CPU/16-epoch result — more epochs and a
+GPU push it higher; this is a methodology demo.)
+
 ## Latency / throughput — measured (this machine)
 
 | Model | CPU (onnxruntime, ms/frame) | In-browser WebGPU (fps, NVIDIA) |

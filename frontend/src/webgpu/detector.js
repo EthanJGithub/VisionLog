@@ -106,7 +106,7 @@ export class ClientDetector {
       ox2: Math.min(srcW, (x2 - padX) / scale),
       oy2: Math.min(srcH, (y2 - padY) / scale),
     });
-    const names = this.head === "v8seg" ? this.classNames : COCO_CLASSES;
+    const names = this.classNames || COCO_CLASSES; // custom (vocab/fine-tune) else COCO
     const push = (arr, cls, score, x1, y1, x2, y2) => {
       const { ox1, oy1, ox2, oy2 } = map(x1, y1, x2, y2);
       if (ox2 <= ox1 || oy2 <= oy1) return;
@@ -165,7 +165,8 @@ export class ClientDetector {
 export async function createDetector(model, { inputSize = 640, conf = 0.35 } = {}) {
   let classNames = null;
   const head = model.head === "v8seg" ? "v8seg" : "e2e";
-  if (head === "v8seg") {
+  // Any model with a vocabUrl carries custom class names (open-vocab OR a fine-tune).
+  if (model.vocabUrl) {
     const meta = await (await fetch(model.vocabUrl)).json();
     classNames = meta.classes;
   }

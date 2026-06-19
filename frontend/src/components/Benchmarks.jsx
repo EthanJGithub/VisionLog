@@ -13,6 +13,7 @@ const pct = (x) => (x == null ? "—" : (x * 100).toFixed(1) + "%");
 /** Model evaluation + latency report (loaded from /benchmarks/benchmarks.json). */
 export default function Benchmarks() {
   const [data, setData] = useState(null);
+  const [ft, setFt] = useState(null);
   const [err, setErr] = useState(null);
 
   useEffect(() => {
@@ -20,6 +21,10 @@ export default function Benchmarks() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("no report"))))
       .then(setData)
       .catch(() => setErr("Benchmark report not found — run `python -m src.eval.benchmark`."));
+    fetch("/benchmarks/finetune.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setFt)
+      .catch(() => {});
   }, []);
 
   if (err) return <div className="panel"><h2>Benchmarks</h2><p className="muted">{err}</p></div>;
@@ -49,6 +54,24 @@ export default function Benchmarks() {
             </tbody>
           </table>
         </div>
+
+        {ft && (
+          <div className="panel">
+            <h2>Domain fine-tune — {ft.dataset}</h2>
+            <p className="muted">
+              Transfer learning from {ft.base_model}: the COCO base has none of these classes,
+              so it scores ~0; {ft.epochs} epochs of fine-tuning teaches them.
+              Detects: {ft.classes.join(", ")}.
+            </p>
+            <table className="feed">
+              <thead><tr><th></th><th>mAP@50</th><th>mAP@50-95</th></tr></thead>
+              <tbody>
+                <tr><td className="muted">before (COCO base)</td><td>{pct(ft.before.map50)}</td><td>{pct(ft.before.map50_95)}</td></tr>
+                <tr><td><strong>after (fine-tuned)</strong></td><td><strong>{pct(ft.after.map50)}</strong></td><td><strong>{pct(ft.after.map50_95)}</strong></td></tr>
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div className="panel">
           <h2>Latency / throughput</h2>

@@ -42,6 +42,16 @@ export const MODELS = [
     note: "Extra-large (~223MB download). ~10 fps on a strong GPU; needs one.",
   },
   {
+    id: "yolo26-ppe",
+    label: "YOLO26n-PPE — fine-tuned (your GPU)",
+    url: "/models/yolo26-ppe.onnx",
+    vocabUrl: "/models/yolo26-ppe.json",
+    sizeMB: 9.5,
+    runtimes: ["client"],
+    family: "yolo26-ft",
+    note: "Domain fine-tune on Construction-PPE — detects helmet / vest / gloves / goggles / boots etc. (classes COCO lacks). Runs on your GPU.",
+  },
+  {
     id: "yoloe26-vocab",
     label: "YOLOE-26 — open-vocabulary (your GPU)",
     url: "/models/yoloe26-vocab.onnx",
