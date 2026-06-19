@@ -79,6 +79,22 @@ which server models are present and whether open-vocab is available — no silen
 
 ---
 
+## 3a. Robust logging — tracking + confirmation
+
+To keep the SQL data "mostly correct", logged detections are not raw per-frame boxes:
+
+- **Object IDs (tracking).** A lightweight client-side tracker
+  ([frontend/src/webgpu/tracker.js](frontend/src/webgpu/tracker.js)) — greedy IoU,
+  class-aware association — assigns a **stable `track_id`** to each physical object across
+  frames. Persisted as the `detections.track_id` column (the "Object ID").
+- **Confirmation gating.** A track must be seen in ≥ `minHits` (default 3) frames before any
+  of its detections are logged — this drops single-frame false-positive flicker.
+- **Adjustable confidence.** A UI slider (default **0.40**) sets the detection threshold live
+  (applied in `detector.js`, no model reload). Higher = fewer false positives in the log.
+
+Each logged row therefore carries **Object ID (`track_id`), class, confidence** (+ bbox,
+frame, timestamp). `totals.objects` = distinct tracked objects.
+
 ## 4. Determinism, guardrails, observability
 
 - Pinned thresholds/sizes in [src/config.py](src/config.py); every `source` row stores the

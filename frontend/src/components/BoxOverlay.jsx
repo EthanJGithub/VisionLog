@@ -40,7 +40,8 @@ export default function BoxOverlay({ detections, nativeWidth, nativeHeight, disp
       ctx.strokeStyle = color;
       ctx.strokeRect(x, y, w, h);
 
-      const label = `${d.class_label} ${(d.confidence * 100).toFixed(0)}%`;
+      const idPart = d.track_id != null ? `#${d.track_id} ` : "";
+      const label = `${idPart}${d.class_label} ${(d.confidence * 100).toFixed(0)}%`;
       const tw = ctx.measureText(label).width + 8;
       ctx.fillStyle = color;
       ctx.fillRect(x, Math.max(0, y - 18), tw, 18);

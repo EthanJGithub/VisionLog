@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 
 class DetectionCore(BaseModel):
+    track_id: int | None = None  # Object ID — stable across frames (from the tracker)
     class_label: str
     class_id: int
     confidence: float

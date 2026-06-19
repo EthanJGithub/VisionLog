@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { createDetector } from "../webgpu/detector";
+import { SimpleTracker } from "../webgpu/tracker";
 import { CLIENT_MODELS } from "../models";
 import BoxOverlay from "./BoxOverlay";
 import ClassFilter from "./ClassFilter";
 
 const LOG_FLUSH_MS = 1000; // sample detections to Postgres ~1x/sec (don't spam the DB)
+const DEFAULT_CONF = 0.4;  // robust default — fewer false positives in the SQL log
 
 /**
  * Real-time webcam detection that runs IN THE BROWSER on the visitor's GPU
@@ -20,12 +22,19 @@ export default function LiveWebcam({ onLogged }) {
   const pendingRef = useRef([]); // frames awaiting flush to the server
   const frameNoRef = useRef(0);
   const enabledRef = useRef(null); // Set of enabled class labels (open-vocab), or null = all
+  const trackerRef = useRef(null); // assigns stable Object IDs across frames
 
   const INPUT_SIZE = 640; // models are exported at a fixed 640 for peak WebGPU throughput
   const [modelId, setModelId] = useState(CLIENT_MODELS[0].id);
   const [vocab, setVocab] = useState(null);
   const [enabled, setEnabled] = useState(new Set());
+  const [conf, setConf] = useState(DEFAULT_CONF);
   const selectedModel = CLIENT_MODELS.find((m) => m.id === modelId);
+
+  function changeConf(v) {
+    setConf(v);
+    if (detectorRef.current) detectorRef.current.confThreshold = v; // live, no reload
+  }
   const [backend, setBackend] = useState(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
@@ -43,6 +52,7 @@ export default function LiveWebcam({ onLogged }) {
     if (videoRef.current) videoRef.current.srcObject = null;
     detectorRef.current?.dispose();
     detectorRef.current = null;
+    trackerRef.current = null;
     onLogged?.();
   }, [onLogged]);
 
@@ -55,9 +65,10 @@ export default function LiveWebcam({ onLogged }) {
       const model = CLIENT_MODELS.find((m) => m.id === modelId);
       const { detector, backend: be, classNames } = await createDetector(model, {
         inputSize: INPUT_SIZE,
-        conf: 0.35,
+        conf,
       });
       detectorRef.current = detector;
+      trackerRef.current = new SimpleTracker();
       setBackend(be);
       if (classNames) {
         setVocab(classNames);
@@ -78,7 +89,7 @@ export default function LiveWebcam({ onLogged }) {
       const session = await api.clientSession({
         kind: "webcam",
         model_version: `${model.id}-webgpu`,
-        conf_threshold: 0.35,
+        conf_threshold: conf,
       });
       sourceIdRef.current = session.id;
       frameNoRef.current = 0;
@@ -110,10 +121,11 @@ export default function LiveWebcam({ onLogged }) {
     detector
       .detect(video, video.videoWidth, video.videoHeight)
       .then((all) => {
-        const d = enabledRef.current
+        const filtered = enabledRef.current
           ? all.filter((x) => enabledRef.current.has(x.class_label))
           : all;
-        setDets(d);
+        const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
+        setDets(tracked);
         const now = performance.now();
         const inst = 1000 / Math.max(1, now - t0);
         setFps((prev) => (prev ? prev * 0.8 + inst * 0.2 : inst));
@@ -123,9 +135,12 @@ export default function LiveWebcam({ onLogged }) {
           dw: video.clientWidth,
           dh: video.clientHeight,
         });
-        // queue this frame for logging
+        // Log only CONFIRMED objects (seen across several frames) — robust SQL data.
+        const confirmed = tracked
+          .filter((t) => t._confirmed)
+          .map(({ _confirmed, ...rest }) => rest);
         const fn = frameNoRef.current++;
-        pendingRef.current.push({ frame_number: fn, ts_seconds: now / 1000, detections: d });
+        pendingRef.current.push({ frame_number: fn, ts_seconds: now / 1000, detections: confirmed });
         requestAnimationFrame(loop);
       })
       .catch((err) => {
@@ -176,6 +191,13 @@ export default function LiveWebcam({ onLogged }) {
               <option key={m.id} value={m.id}>{m.label} (~{m.sizeMB}MB)</option>
             ))}
           </select>
+        </label>
+        <label>
+          Confidence ≥ {conf.toFixed(2)}{" "}
+          <input
+            type="range" min="0.1" max="0.9" step="0.05" value={conf}
+            onChange={(e) => changeConf(+e.target.value)}
+          />
         </label>
         {!running ? (
           <button className="btn" onClick={start} disabled={loading}>

@@ -53,6 +53,7 @@ class DetectionRow(Base):
     )
     frame_number = Column(Integer, nullable=False)
     ts_seconds = Column(Float, nullable=False)            # offset within the video/stream
+    track_id = Column(Integer, index=True)                # Object ID — stable across frames
     class_label = Column(String(64), nullable=False, index=True)
     class_id = Column(Integer, nullable=False)
     confidence = Column(Float, nullable=False)
@@ -130,6 +131,7 @@ def add_detections(
                 source_id=source_id,
                 frame_number=frame_number,
                 ts_seconds=ts_seconds,
+                track_id=d.get("track_id"),
                 class_label=d["class_label"],
                 class_id=d["class_id"],
                 confidence=d["confidence"],
@@ -181,6 +183,7 @@ def get_detections(source_id: int, engine=None) -> list[dict[str, Any]]:
                 "id": r.id,
                 "frame_number": r.frame_number,
                 "ts_seconds": r.ts_seconds,
+                "track_id": r.track_id,
                 "class_label": r.class_label,
                 "class_id": r.class_id,
                 "confidence": r.confidence,
@@ -209,4 +212,8 @@ def totals(engine=None) -> dict[str, int]:
         return {
             "sources": session.scalar(select(func.count(Source.id))) or 0,
             "detections": session.scalar(select(func.count(DetectionRow.id))) or 0,
+            # distinct (source, track_id) pairs = unique tracked objects logged
+            "objects": session.scalar(
+                select(func.count(func.distinct(DetectionRow.track_id)))
+            ) or 0,
         }

@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { MODELS, isClientModel } from "../models";
 import { createDetector } from "../webgpu/detector";
+import { SimpleTracker } from "../webgpu/tracker";
 import BoxOverlay from "./BoxOverlay";
 import ClassFilter from "./ClassFilter";
 
 const LOG_FLUSH_MS = 1000;
 const INPUT_SIZE = 640;
+const DEFAULT_CONF = 0.4;
 
 /**
  * Upload a video file. For YOLO26 n/s the file is decoded and detected **in the browser
@@ -23,10 +25,17 @@ export default function VideoUpload({ onLogged }) {
   const pendingRef = useRef([]);
   const frameNoRef = useRef(0);
   const enabledRef = useRef(null); // open-vocab class filter (Set), or null = all
+  const trackerRef = useRef(null); // stable Object IDs across frames
 
   const [vocab, setVocab] = useState(null);
   const [enabled, setEnabled] = useState(new Set());
+  const [conf, setConf] = useState(DEFAULT_CONF);
   const [model, setModel] = useState("yolo26n");
+
+  function changeConf(v) {
+    setConf(v);
+    if (detectorRef.current) detectorRef.current.confThreshold = v;
+  }
   const [prompts, setPrompts] = useState("");
   const [videoUrl, setVideoUrl] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -52,6 +61,7 @@ export default function VideoUpload({ onLogged }) {
     loggingRef.current = false;
     detectorRef.current?.dispose();
     detectorRef.current = null;
+    trackerRef.current = null;
   }, []);
 
   useEffect(() => () => teardown(), [teardown]);
@@ -97,9 +107,10 @@ export default function VideoUpload({ onLogged }) {
       }
       const { detector, backend: be, classNames } = await createDetector(selected, {
         inputSize: INPUT_SIZE,
-        conf: 0.35,
+        conf,
       });
       detectorRef.current = detector;
+      trackerRef.current = new SimpleTracker();
       setBackend(be);
       if (classNames) {
         setVocab(classNames);
@@ -114,7 +125,7 @@ export default function VideoUpload({ onLogged }) {
       const session = await api.clientSession({
         kind: "upload",
         model_version: `${model}-webgpu`,
-        conf_threshold: 0.35,
+        conf_threshold: conf,
       });
       sourceIdRef.current = session.id;
       frameNoRef.current = 0;
@@ -153,18 +164,23 @@ export default function VideoUpload({ onLogged }) {
     detector
       .detect(v, v.videoWidth, v.videoHeight)
       .then((all) => {
-        const d = enabledRef.current
+        const filtered = enabledRef.current
           ? all.filter((x) => enabledRef.current.has(x.class_label))
           : all;
-        setLiveDets(d);
+        const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
+        setLiveDets(tracked);
         const inst = 1000 / Math.max(1, performance.now() - t0);
         setFps((p) => (p ? p * 0.8 + inst * 0.2 : inst));
         setDims({ nw: v.videoWidth, nh: v.videoHeight, dw: v.clientWidth, dh: v.clientHeight });
         if (loggingRef.current) {
+          // Log only CONFIRMED objects (seen across frames) — robust SQL data.
+          const confirmed = tracked
+            .filter((t) => t._confirmed)
+            .map(({ _confirmed, ...rest }) => rest);
           pendingRef.current.push({
             frame_number: frameNoRef.current++,
             ts_seconds: +v.currentTime.toFixed(3),
-            detections: d,
+            detections: confirmed,
           });
         }
         if (runningRef.current) requestAnimationFrame(loop);
@@ -249,6 +265,13 @@ export default function VideoUpload({ onLogged }) {
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
+        </label>
+        <label>
+          Confidence ≥ {conf.toFixed(2)}{" "}
+          <input
+            type="range" min="0.1" max="0.9" step="0.05" value={conf}
+            onChange={(e) => changeConf(+e.target.value)}
+          />
         </label>
       </div>
 
