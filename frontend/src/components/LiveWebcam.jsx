@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { ClientDetector } from "../webgpu/detector";
+import { createDetector } from "../webgpu/detector";
 import { CLIENT_MODELS } from "../models";
 import BoxOverlay from "./BoxOverlay";
+import ClassFilter from "./ClassFilter";
 
 const LOG_FLUSH_MS = 1000; // sample detections to Postgres ~1x/sec (don't spam the DB)
 
@@ -18,9 +19,13 @@ export default function LiveWebcam({ onLogged }) {
   const sourceIdRef = useRef(null);
   const pendingRef = useRef([]); // frames awaiting flush to the server
   const frameNoRef = useRef(0);
+  const enabledRef = useRef(null); // Set of enabled class labels (open-vocab), or null = all
 
   const INPUT_SIZE = 640; // models are exported at a fixed 640 for peak WebGPU throughput
   const [modelId, setModelId] = useState(CLIENT_MODELS[0].id);
+  const [vocab, setVocab] = useState(null);
+  const [enabled, setEnabled] = useState(new Set());
+  const selectedModel = CLIENT_MODELS.find((m) => m.id === modelId);
   const [backend, setBackend] = useState(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
@@ -48,10 +53,21 @@ export default function LiveWebcam({ onLogged }) {
     setLoading(true);
     try {
       const model = CLIENT_MODELS.find((m) => m.id === modelId);
-      const detector = new ClientDetector(model.url, { inputSize: INPUT_SIZE, confThreshold: 0.35 });
-      const be = await detector.load();
+      const { detector, backend: be, classNames } = await createDetector(model, {
+        inputSize: INPUT_SIZE,
+        conf: 0.35,
+      });
       detectorRef.current = detector;
       setBackend(be);
+      if (classNames) {
+        setVocab(classNames);
+        const all = new Set(classNames);
+        setEnabled(all);
+        enabledRef.current = all;
+      } else {
+        setVocab(null);
+        enabledRef.current = null;
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       const video = videoRef.current;
@@ -93,7 +109,10 @@ export default function LiveWebcam({ onLogged }) {
     const t0 = performance.now();
     detector
       .detect(video, video.videoWidth, video.videoHeight)
-      .then((d) => {
+      .then((all) => {
+        const d = enabledRef.current
+          ? all.filter((x) => enabledRef.current.has(x.class_label))
+          : all;
         setDets(d);
         const now = performance.now();
         const inst = 1000 / Math.max(1, now - t0);
@@ -166,6 +185,24 @@ export default function LiveWebcam({ onLogged }) {
           <button className="btn btn-stop" onClick={stop}>Stop</button>
         )}
       </div>
+
+      {selectedModel?.openVocab && (
+        <p className="muted" style={{ marginTop: 4 }}>{selectedModel.note}</p>
+      )}
+      {running && vocab && (
+        <ClassFilter
+          classes={vocab}
+          enabled={enabled}
+          onToggle={(c) => {
+            const next = new Set(enabled);
+            next.has(c) ? next.delete(c) : next.add(c);
+            setEnabled(next);
+            enabledRef.current = next;
+          }}
+          onAll={() => { const a = new Set(vocab); setEnabled(a); enabledRef.current = a; }}
+          onNone={() => { const e = new Set(); setEnabled(e); enabledRef.current = e; }}
+        />
+      )}
 
       {error && <p className="error">⚠ {error}</p>}
 

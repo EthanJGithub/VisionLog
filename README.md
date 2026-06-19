@@ -15,14 +15,16 @@ license: agpl-3.0
 **YOLO26 object detection on your video → structured detection logs in PostgreSQL →
 live, browsable dashboard.** A **hybrid** computer-vision app:
 
-- **Webcam *and* n/s file uploads run in your browser, on your own GPU** (onnxruntime-web +
-  **WebGPU**) — real-time on a capable GPU (measured **≈48 fps** for YOLO26n at 640px on an
-  NVIDIA card), with automatic CPU/WASM fallback. Your video never leaves your device; only
-  sampled detections are logged.
-- **Heavier models run server-side** with a model picker: **YOLO26 m / x** plus **YOLOE-26
-  open-vocabulary** detection (type the classes you want, e.g. "forklift, hard hat"). On the
-  free tier the server is **CPU-only — not GPU-accelerated**, so these are much slower than
-  the in-browser n/s path (flagged in the UI).
+- **Everything runs in your browser, on your own GPU** (onnxruntime-web + **WebGPU**),
+  webcam and uploaded files alike. Measured on an NVIDIA card: **n≈48, m≈20, x≈11 fps**;
+  automatic CPU/WASM fallback. Your video never leaves your device — only sampled detections
+  are logged.
+- **Model picker:** YOLO26 **n / s / m / x** (speed↔accuracy) plus **YOLOE-26
+  open-vocabulary** — a curated vocabulary (incl. classes COCO lacks: hard hat, forklift,
+  pallet, license plate…) baked into a 41 MB ONNX, with a click-to-pick class filter. Fully
+  client-side; **no server inference and no 570 MB CLIP text encoder.**
+- An optional server path (open-vocab with *arbitrary* typed prompts via ultralytics) exists
+  but is off by default; on a free tier it's CPU-only/slow (flagged in the UI).
 
 Built to run **free**: the webcam path uses the visitor's GPU (no server compute), and the
 server (uploads + logging) fits a free Hugging Face Space + Neon free Postgres.

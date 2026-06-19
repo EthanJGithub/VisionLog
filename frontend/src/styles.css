@@ -78,6 +78,16 @@ input[type="file"] { color: var(--muted); font-size: 13px; }
 .chip-ok { background: #0b2a26; border-color: #134e4a; color: #5eead4; }
 .chip-warn { background: #2a1d0b; border-color: #4e3b13; color: #fbbf24; }
 
+.classfilter { margin: 10px 0; }
+.classfilter-head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.link { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 12px; padding: 0; }
+.chipwrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.fchip {
+  background: #0b1322; border: 1px solid var(--border); color: var(--muted);
+  padding: 3px 9px; border-radius: 999px; font-size: 12px; cursor: pointer;
+}
+.fchip-on { background: #0e2a3a; border-color: var(--accent); color: #bdf2ff; }
+
 .feed { width: 100%; border-collapse: collapse; font-size: 13px; }
 .feed th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .feed td { padding: 6px 8px; border-bottom: 1px solid #131c2e; }

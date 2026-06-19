@@ -4,13 +4,16 @@ VisionLog runs **YOLO26 object detection on user-supplied video** and writes **s
 detection logs to PostgreSQL**, with a live React/Nivo dashboard. It uses a **hybrid**
 compute model so it is both *free to run* and *fast*:
 
-- **Webcam *and* n/s file uploads → client-side, on the visitor's own GPU** (onnxruntime-web
-  + **WebGPU**). Real-time on a capable GPU; falls back to CPU (WASM) with the backend shown.
-  If the browser can run inference for the webcam, it can run it for an uploaded file too —
-  so n/s uploads never touch the server's compute.
-- **Heavy models → server-side** (onnxruntime): **YOLO26 m / x** and **YOLOE-26
-  open-vocabulary**. On the free tier the server is **CPU-only (no GPU)**, so these are much
-  slower than the in-browser path — surfaced as an explicit UI disclaimer, not hidden.
+- **Everything → client-side, on the visitor's own GPU** (onnxruntime-web + **WebGPU**),
+  webcam and uploads alike. Real-time on a capable GPU; falls back to CPU (WASM) with the
+  backend shown. Measured: n≈48, m≈20, x≈11 fps (NVIDIA).
+- **All five models run in-browser:** YOLO26 **n/s/m/x** (NMS-free end-to-end head) and
+  **YOLOE-26 open-vocabulary** (a curated vocabulary baked into a 41 MB ONNX; one-to-many
+  head decoded with JS-side NMS — `frontend/src/webgpu/detector.js`). No CLIP text encoder
+  is shipped to the browser; instead the vocabulary's text embeddings are baked in at export.
+- **Optional server path** (`src/detect/{ultra,openvocab}.py`) remains for *arbitrary* typed
+  open-vocab prompts (needs the CLIP encoder) and as a no-WebGPU fallback. Off by default;
+  CPU-only/slow on the free tier — surfaced as an explicit disclaimer, not hidden.
 
 This document explains *why* each piece is built this way, the data flow, observability,
 and known limitations. Claims are grounded in the code and in measured numbers.
@@ -61,12 +64,14 @@ and known limitations. Claims are grounded in the code and in measured numbers.
 
 ## 3. Models
 
-| Model | Where it runs | Notes |
-|---|---|---|
-| YOLO26n (9.5 MB) | client **and** server | Default. Real-time webcam on most GPUs. |
-| YOLO26s (37 MB) | client **and** server | More accurate; needs a stronger GPU for real-time webcam. |
-| YOLO26m / x | server only | Larger/slower; upload path. Export with `python -m src.detect.export --all`. |
-| YOLOE-26 (open-vocab) | server only ("full" image) | Text-prompt detection of arbitrary classes via [src/detect/openvocab.py](src/detect/openvocab.py). Needs `requirements-full.txt` + first-run CLIP download (~570 MB). |
+| Model | Size | Where it runs | Notes |
+|---|---|---|---|
+| YOLO26n | 9.5 MB | client (GPU) | Default. ~48 fps. Committed. |
+| YOLO26s | 37 MB | client (GPU) | ~real-time on a decent GPU. Committed. |
+| YOLO26m | 82 MB | client (GPU) | ~20 fps. Committed. |
+| YOLO26x | 223 MB | client (GPU) | ~10 fps; needs a strong GPU. Exceeds GitHub's 100 MB limit → served on deploy, not committed (UI shows unavailable if absent). |
+| YOLOE-26 open-vocab | 41 MB | client (GPU) | Curated vocabulary baked in; client-side, no CLIP encoder. Committed (`yoloe26-vocab.onnx` + `.json`). |
+| YOLOE-26 (arbitrary prompts) | — | server (optional) | True free-text prompts; needs the CLIP encoder (~570 MB, `requirements-full.txt`). Off by default. |
 
 Client model registry: [frontend/src/models.js](frontend/src/models.js). Server registry +
 availability: [src/detect/registry.py](src/detect/registry.py). `/api/v1/health` reports

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { MODELS, isClientModel } from "../models";
-import { ClientDetector } from "../webgpu/detector";
+import { createDetector } from "../webgpu/detector";
 import BoxOverlay from "./BoxOverlay";
+import ClassFilter from "./ClassFilter";
 
 const LOG_FLUSH_MS = 1000;
 const INPUT_SIZE = 640;
@@ -21,7 +22,10 @@ export default function VideoUpload({ onLogged }) {
   const sourceIdRef = useRef(null);
   const pendingRef = useRef([]);
   const frameNoRef = useRef(0);
+  const enabledRef = useRef(null); // open-vocab class filter (Set), or null = all
 
+  const [vocab, setVocab] = useState(null);
+  const [enabled, setEnabled] = useState(new Set());
   const [model, setModel] = useState("yolo26n");
   const [prompts, setPrompts] = useState("");
   const [videoUrl, setVideoUrl] = useState(null);
@@ -62,6 +66,8 @@ export default function VideoUpload({ onLogged }) {
     setFps(0);
     setLogged(0);
     setError(null);
+    setVocab(null);
+    enabledRef.current = null;
   }
 
   async function handleFile(e) {
@@ -89,13 +95,21 @@ export default function VideoUpload({ onLogged }) {
           `GitHub's 100MB limit; it's served on the full deployment. Try n/s/m instead.`
         );
       }
-      const detector = new ClientDetector(selected.url, {
+      const { detector, backend: be, classNames } = await createDetector(selected, {
         inputSize: INPUT_SIZE,
-        confThreshold: 0.35,
+        conf: 0.35,
       });
-      const be = await detector.load();
       detectorRef.current = detector;
       setBackend(be);
+      if (classNames) {
+        setVocab(classNames);
+        const all = new Set(classNames);
+        setEnabled(all);
+        enabledRef.current = all;
+      } else {
+        setVocab(null);
+        enabledRef.current = null;
+      }
 
       const session = await api.clientSession({
         kind: "upload",
@@ -138,7 +152,10 @@ export default function VideoUpload({ onLogged }) {
     const t0 = performance.now();
     detector
       .detect(v, v.videoWidth, v.videoHeight)
-      .then((d) => {
+      .then((all) => {
+        const d = enabledRef.current
+          ? all.filter((x) => enabledRef.current.has(x.class_label))
+          : all;
         setLiveDets(d);
         const inst = 1000 / Math.max(1, performance.now() - t0);
         setFps((p) => (p ? p * 0.8 + inst * 0.2 : inst));
@@ -263,6 +280,21 @@ export default function VideoUpload({ onLogged }) {
       <input type="file" accept="video/*" onChange={handleFile} disabled={busy} />
       {busy && <p className="muted">{clientSide ? "Loading model onto your GPU…" : "Analysing on the server (CPU)…"}</p>}
       {error && <p className="error">⚠ {error}</p>}
+
+      {clientSide && vocab && (
+        <ClassFilter
+          classes={vocab}
+          enabled={enabled}
+          onToggle={(c) => {
+            const next = new Set(enabled);
+            next.has(c) ? next.delete(c) : next.add(c);
+            setEnabled(next);
+            enabledRef.current = next;
+          }}
+          onAll={() => { const a = new Set(vocab); setEnabled(a); enabledRef.current = a; }}
+          onNone={() => { const e = new Set(); setEnabled(e); enabledRef.current = e; }}
+        />
+      )}
 
       {clientSide && videoUrl && (
         <div className="stat-row" style={{ marginTop: 10 }}>

@@ -42,12 +42,16 @@ export const MODELS = [
     note: "Extra-large (~223MB download). ~10 fps on a strong GPU; needs one.",
   },
   {
-    id: "yoloe26",
-    label: "YOLOE-26 — open-vocabulary (server)",
-    runtimes: ["server"],
+    id: "yoloe26-vocab",
+    label: "YOLOE-26 — open-vocabulary (your GPU)",
+    url: "/models/yoloe26-vocab.onnx",
+    vocabUrl: "/models/yoloe26-vocab.json",
+    sizeMB: 41,
+    runtimes: ["client"],
     family: "yoloe",
+    head: "v8seg",
     openVocab: true,
-    note: "Detect anything via text prompts. Server-side; CPU-only on the free tier (slow).",
+    note: "Open-vocabulary, fully in-browser on your GPU — no server, no 570MB text encoder. Detects a curated vocabulary (incl. classes COCO lacks: hard hat, forklift, pallet, license plate…).",
   },
 ];
 

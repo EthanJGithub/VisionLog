@@ -73,9 +73,9 @@ export default function App() {
       </div>
 
       <footer className="foot muted">
-        YOLO26 (AGPL-3.0) · webcam &amp; n/s uploads run in-browser on your GPU (WebGPU) ·
-        m/x + open-vocab run server-side · detections persisted with model version &amp;
-        threshold for auditability
+        YOLO26 (AGPL-3.0) · everything runs in-browser on your GPU (WebGPU) — n/s/m/x +
+        open-vocab (YOLOE) · no server inference · detections persisted with model version
+        &amp; threshold for auditability
       </footer>
     </div>
   );
