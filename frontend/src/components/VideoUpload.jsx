@@ -1,43 +1,191 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
-import { SERVER_MODELS } from "../models";
+import { MODELS, isClientModel } from "../models";
+import { ClientDetector } from "../webgpu/detector";
 import BoxOverlay from "./BoxOverlay";
 
+const LOG_FLUSH_MS = 1000;
+const INPUT_SIZE = 640;
+
 /**
- * Upload mode (server-side): POST a video file + chosen model, get back logged
- * detections, then play the native <video> with boxes overlaid — synced to
- * currentTime (no re-encode). Supports YOLO26 n/s/m/x and YOLOE-26 open-vocab.
+ * Upload a video file. For YOLO26 n/s the file is decoded and detected **in the browser
+ * on your GPU** (same as the webcam path) — free and fast. For the heavy server models
+ * (m/x/open-vocab) the file is processed server-side (CPU-only on the free tier — slow,
+ * flagged in the UI). Either way, detections are logged to PostgreSQL.
  */
 export default function VideoUpload({ onLogged }) {
   const videoRef = useRef(null);
-  const fileRef = useRef(null);
-  const [model, setModel] = useState(SERVER_MODELS[0].id);
+  const detectorRef = useRef(null);
+  const runningRef = useRef(false); // detection loop active
+  const loggingRef = useRef(false); // log only during the first pass
+  const sourceIdRef = useRef(null);
+  const pendingRef = useRef([]);
+  const frameNoRef = useRef(0);
+
+  const [model, setModel] = useState("yolo26n");
   const [prompts, setPrompts] = useState("");
   const [videoUrl, setVideoUrl] = useState(null);
-  const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [now, setNow] = useState(0);
+
+  // client-side (local GPU) state
+  const [backend, setBackend] = useState(null);
+  const [fps, setFps] = useState(0);
+  const [logged, setLogged] = useState(0);
+  const [liveDets, setLiveDets] = useState([]);
   const [dims, setDims] = useState({ nw: 0, nh: 0, dw: 0, dh: 0 });
 
-  const selected = SERVER_MODELS.find((m) => m.id === model);
+  // server-side state
+  const [serverResult, setServerResult] = useState(null);
+  const [now, setNow] = useState(0);
+
+  const selected = MODELS.find((m) => m.id === model);
+  const clientSide = isClientModel(model);
   const isOpenVocab = !!selected?.openVocab;
+
+  const teardown = useCallback(() => {
+    runningRef.current = false;
+    loggingRef.current = false;
+    detectorRef.current?.dispose();
+    detectorRef.current = null;
+  }, []);
+
+  useEffect(() => () => teardown(), [teardown]);
+
+  // Switching model resets the loaded clip so the two paths never mix.
+  function onModelChange(id) {
+    teardown();
+    setModel(id);
+    setVideoUrl(null);
+    setServerResult(null);
+    setLiveDets([]);
+    setFps(0);
+    setLogged(0);
+    setError(null);
+  }
 
   async function handleFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (isOpenVocab && !prompts.trim()) {
-      setError("Enter comma-separated class names to detect (e.g. 'forklift, hard hat').");
-      e.target.value = "";
+    setError(null);
+    setServerResult(null);
+    setLiveDets([]);
+    setLogged(0);
+    const url = URL.createObjectURL(file);
+    setVideoUrl(url);
+    if (clientSide) await runClientSide(url);
+    else await runServerSide(file);
+  }
+
+  // ---- client-side (local GPU) -----------------------------------------------------
+  async function runClientSide(url) {
+    setBusy(true);
+    try {
+      const detector = new ClientDetector(selected.url, {
+        inputSize: INPUT_SIZE,
+        confThreshold: 0.35,
+      });
+      const be = await detector.load();
+      detectorRef.current = detector;
+      setBackend(be);
+
+      const session = await api.clientSession({
+        kind: "upload",
+        model_version: `${model}-webgpu`,
+        conf_threshold: 0.35,
+      });
+      sourceIdRef.current = session.id;
+      frameNoRef.current = 0;
+      pendingRef.current = [];
+      runningRef.current = true;
+      loggingRef.current = true;
+      setBusy(false);
+
+      // src is bound to videoUrl in JSX (set above); by now React has rendered it.
+      const v = videoRef.current;
+      v.muted = true;
+      if (v.readyState < 2) {
+        await new Promise((res) => {
+          v.onloadeddata = res;
+          setTimeout(res, 3000); // safety
+        });
+      }
+      await v.play().catch(() => {});
+      loop();
+      startFlush();
+    } catch (err) {
+      setError(err.message || "Could not start in-browser detection.");
+      setBusy(false);
+    }
+  }
+
+  function loop() {
+    const v = videoRef.current;
+    const detector = detectorRef.current;
+    if (!runningRef.current || !v || !detector) return;
+    if (v.readyState < 2 || v.paused || v.ended) {
+      if (runningRef.current) requestAnimationFrame(loop);
       return;
     }
-    setError(null);
-    setResult(null);
-    setVideoUrl(URL.createObjectURL(file));
+    const t0 = performance.now();
+    detector
+      .detect(v, v.videoWidth, v.videoHeight)
+      .then((d) => {
+        setLiveDets(d);
+        const inst = 1000 / Math.max(1, performance.now() - t0);
+        setFps((p) => (p ? p * 0.8 + inst * 0.2 : inst));
+        setDims({ nw: v.videoWidth, nh: v.videoHeight, dw: v.clientWidth, dh: v.clientHeight });
+        if (loggingRef.current) {
+          pendingRef.current.push({
+            frame_number: frameNoRef.current++,
+            ts_seconds: +v.currentTime.toFixed(3),
+            detections: d,
+          });
+        }
+        if (runningRef.current) requestAnimationFrame(loop);
+      })
+      .catch((err) => {
+        setError(`Inference error: ${err.message}`);
+        runningRef.current = false;
+      });
+  }
+
+  function startFlush() {
+    const tick = async () => {
+      if (!loggingRef.current) return;
+      const batch = pendingRef.current;
+      pendingRef.current = [];
+      if (batch.length && sourceIdRef.current != null) {
+        const step = Math.max(1, Math.floor(batch.length / 3));
+        const sampled = batch.filter((_, i) => i % step === 0);
+        try {
+          const r = await api.clientDetections(sourceIdRef.current, sampled);
+          setLogged((n) => n + (r.logged || 0));
+          onLogged?.();
+        } catch {
+          /* surfaced via health dot */
+        }
+      }
+      if (loggingRef.current) setTimeout(tick, LOG_FLUSH_MS);
+    };
+    setTimeout(tick, LOG_FLUSH_MS);
+  }
+
+  function onEnded() {
+    loggingRef.current = false; // stop logging after the first pass; replay still overlays
+    onLogged?.();
+  }
+
+  // ---- server-side (heavy models) --------------------------------------------------
+  async function runServerSide(file) {
+    if (isOpenVocab && !prompts.trim()) {
+      setError("Enter comma-separated class names to detect (e.g. 'forklift, hard hat').");
+      return;
+    }
     setBusy(true);
     try {
       const res = await api.upload(file, { model, prompts });
-      setResult(res);
+      setServerResult(res);
       onLogged?.();
     } catch (err) {
       setError(err.message);
@@ -46,42 +194,46 @@ export default function VideoUpload({ onLogged }) {
     }
   }
 
-  // Detections within ~1 sample window of the current playback time.
-  const window = result ? 1 / (result.source.fps || 5) + 0.05 : 0;
-  const active = useMemo(() => {
-    if (!result) return [];
-    return result.detections.filter((d) => Math.abs(d.ts_seconds - now) <= window);
-  }, [result, now, window]);
+  const serverWindow = serverResult ? 1 / (serverResult.source.fps || 5) + 0.05 : 0;
+  const serverActive = useMemo(() => {
+    if (!serverResult) return [];
+    return serverResult.detections.filter((d) => Math.abs(d.ts_seconds - now) <= serverWindow);
+  }, [serverResult, now, serverWindow]);
 
   function syncDims() {
     const v = videoRef.current;
-    if (!v) return;
-    setDims({
-      nw: v.videoWidth,
-      nh: v.videoHeight,
-      dw: v.clientWidth,
-      dh: v.clientHeight,
-    });
+    if (v) setDims({ nw: v.videoWidth, nh: v.videoHeight, dw: v.clientWidth, dh: v.clientHeight });
   }
+
+  const overlayDets = clientSide ? liveDets : serverActive;
+  const isCpu = backend === "wasm";
 
   return (
     <div className="panel">
-      <h2>Upload a video — server-side</h2>
+      <h2>Upload a video</h2>
       <p className="muted">
-        Runs the selected model on the server, logs detections to PostgreSQL, then replays
-        them as boxes over your video.
+        n/s run <strong>in your browser on your GPU</strong> (free, real-time). m/x and
+        open-vocab run on the server. Detections are logged to PostgreSQL.
       </p>
 
       <div className="controls">
         <label>
           Model{" "}
-          <select value={model} onChange={(e) => setModel(e.target.value)} disabled={busy}>
-            {SERVER_MODELS.map((m) => (
+          <select value={model} onChange={(e) => onModelChange(e.target.value)} disabled={busy}>
+            {MODELS.map((m) => (
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
         </label>
       </div>
+
+      {!clientSide && (
+        <p className="error" style={{ marginTop: 4 }}>
+          ⚠ Server-side GPU inference isn't free — on the free tier this model runs on CPU
+          only, so expect a small fraction of real-time speed{selected.sizeMB ? ` (${selected.id} ≈ ${selected.sizeMB}MB)` : ""}.
+          For real-time, pick n or s (they run on your own GPU).
+        </p>
+      )}
       {isOpenVocab && (
         <input
           className="prompts"
@@ -93,9 +245,21 @@ export default function VideoUpload({ onLogged }) {
         />
       )}
       <p className="muted" style={{ marginTop: 8 }}>{selected?.note}</p>
-      <input ref={fileRef} type="file" accept="video/*" onChange={handleFile} disabled={busy} />
-      {busy && <p className="muted">Analysing frames with YOLO26…</p>}
+
+      <input type="file" accept="video/*" onChange={handleFile} disabled={busy} />
+      {busy && <p className="muted">{clientSide ? "Loading model onto your GPU…" : "Analysing on the server (CPU)…"}</p>}
       {error && <p className="error">⚠ {error}</p>}
+
+      {clientSide && videoUrl && (
+        <div className="stat-row" style={{ marginTop: 10 }}>
+          <span className={`chip ${isCpu ? "chip-warn" : "chip-ok"}`}>
+            {backend === "webgpu" ? "⚡ WebGPU (your GPU)" : backend === "wasm" ? "CPU (WASM) — not real-time" : "loading…"}
+          </span>
+          <span className="chip">{fps.toFixed(1)} fps</span>
+          <span className="chip">{overlayDets.length} objects</span>
+          <span className="chip">{logged} logged</span>
+        </div>
+      )}
 
       {videoUrl && (
         <div className="video-wrap" style={{ position: "relative", marginTop: 12 }}>
@@ -103,26 +267,28 @@ export default function VideoUpload({ onLogged }) {
             ref={videoRef}
             src={videoUrl}
             controls
+            playsInline
             style={{ width: "100%", borderRadius: 8, display: "block" }}
             onLoadedMetadata={syncDims}
-            onTimeUpdate={(e) => setNow(e.target.currentTime)}
+            onTimeUpdate={clientSide ? undefined : (e) => setNow(e.target.currentTime)}
+            onEnded={clientSide ? onEnded : undefined}
           />
           <BoxOverlay
-            detections={active}
+            detections={overlayDets}
             nativeWidth={dims.nw}
             nativeHeight={dims.nh}
-            displayWidth={dims.dw}
-            displayHeight={dims.dh}
+            displayWidth={videoRef.current?.clientWidth || 0}
+            displayHeight={videoRef.current?.clientHeight || 0}
           />
         </div>
       )}
 
-      {result && (
+      {serverResult && (
         <div className="stat-row" style={{ marginTop: 12 }}>
-          <span className="chip">{result.frames_analysed} frames analysed</span>
-          <span className="chip">{result.detections_logged} detections logged</span>
-          <span className="chip">model {result.source.model_version}</span>
-          <span className="chip">conf ≥ {result.source.conf_threshold}</span>
+          <span className="chip">{serverResult.frames_analysed} frames analysed</span>
+          <span className="chip">{serverResult.detections_logged} detections logged</span>
+          <span className="chip">model {serverResult.source.model_version}</span>
+          <span className="chip">conf ≥ {serverResult.source.conf_threshold}</span>
         </div>
       )}
     </div>

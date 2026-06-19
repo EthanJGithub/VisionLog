@@ -18,8 +18,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# INSTALL_FULL=1 adds ultralytics for server-side m/x + YOLOE-26 open-vocab (heavier image,
+# downloads model weights on first use; NOT the lean free build). Default = lean.
+ARG INSTALL_FULL=0
+COPY requirements.txt requirements-full.txt ./
+RUN if [ "$INSTALL_FULL" = "1" ]; then \
+        pip install --no-cache-dir -r requirements-full.txt; \
+    else \
+        pip install --no-cache-dir -r requirements.txt; \
+    fi
 
 COPY src/ ./src/
 COPY models/ ./models/

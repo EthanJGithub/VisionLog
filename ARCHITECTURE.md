@@ -4,10 +4,13 @@ VisionLog runs **YOLO26 object detection on user-supplied video** and writes **s
 detection logs to PostgreSQL**, with a live React/Nivo dashboard. It uses a **hybrid**
 compute model so it is both *free to run* and *fast*:
 
-- **Live webcam → client-side, on the visitor's own GPU** (onnxruntime-web + **WebGPU**).
-  Real-time on a capable GPU; falls back to CPU (WASM) with the active backend shown.
-- **Video upload → server-side** (onnxruntime), supporting **YOLO26 n / s / m / x** and
-  **YOLOE-26 open-vocabulary** (text-prompt) detection.
+- **Webcam *and* n/s file uploads → client-side, on the visitor's own GPU** (onnxruntime-web
+  + **WebGPU**). Real-time on a capable GPU; falls back to CPU (WASM) with the backend shown.
+  If the browser can run inference for the webcam, it can run it for an uploaded file too —
+  so n/s uploads never touch the server's compute.
+- **Heavy models → server-side** (onnxruntime): **YOLO26 m / x** and **YOLOE-26
+  open-vocabulary**. On the free tier the server is **CPU-only (no GPU)**, so these are much
+  slower than the in-browser path — surfaced as an explicit UI disclaimer, not hidden.
 
 This document explains *why* each piece is built this way, the data flow, observability,
 and known limitations. Claims are grounded in the code and in measured numbers.

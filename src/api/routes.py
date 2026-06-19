@@ -13,14 +13,18 @@ from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 
 from src import config, store, video
 from src.api import schemas
-from src.detect import openvocab, registry
+from src.detect import openvocab, registry, ultra
 
 router = APIRouter(prefix="/api/v1")
 
 
 @router.get("/health", response_model=schemas.HealthOut)
 def health() -> schemas.HealthOut:
-    server_models = registry.available_models()
+    # n/s: lean onnx (by file). m/x: ultralytics "full" image (by availability).
+    server_models = dict(registry.available_models())
+    heavy = ultra.available()
+    server_models["yolo26m"] = heavy
+    server_models["yolo26x"] = heavy
     return schemas.HealthOut(
         status="ok" if any(server_models.values()) else "degraded",
         model_version=config.MODEL_VERSION,
@@ -52,7 +56,9 @@ async def upload_and_detect(
 
     # Resolve the detector for the requested model (no silent fallback).
     is_openvocab = model == "yoloe26"
+    is_heavy = ultra.supports(model)  # yolo26m / yolo26x
     prompt_list = [p.strip() for p in prompts.split(",") if p.strip()]
+    engine = None
     if is_openvocab:
         if not openvocab.available():
             tmp.unlink(missing_ok=True)
@@ -68,6 +74,16 @@ async def upload_and_detect(
                 detail="Open-vocabulary needs `prompts` (comma-separated class names).",
             )
         model_version = openvocab.model_version()
+        conf_threshold = config.CONF_THRESHOLD
+    elif is_heavy:
+        if not ultra.available():
+            tmp.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=503,
+                detail=f"{model} needs the full server image with `ultralytics` installed. "
+                "Not available on this deployment — use n/s (they run in your browser).",
+            )
+        model_version = f"{model}-ultralytics"
         conf_threshold = config.CONF_THRESHOLD
     else:
         try:
@@ -94,6 +110,8 @@ async def upload_and_detect(
                 frames_analysed += 1
                 if is_openvocab:
                     dets = openvocab.detect_frame(frame, prompt_list, conf_threshold)
+                elif is_heavy:
+                    dets = ultra.detect_frame(model, frame, conf_threshold)
                 else:
                     dets = [d.as_dict() for d in engine.detect(frame)]
                 total_logged += store.add_detections(source_id, frame_no, ts, dets)

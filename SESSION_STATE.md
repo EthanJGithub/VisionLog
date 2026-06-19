@@ -4,8 +4,10 @@ _Last updated: 2026-06-18_
 
 ## What this is
 Third portfolio project (after CredAgent, FraudPulse): a **hybrid computer-vision** web app.
-- **Live webcam → client-side, real-time on the visitor's GPU** (onnxruntime-web + WebGPU).
-- **Video upload → server-side**, model picker YOLO26 n/s/m/x + YOLOE-26 open-vocabulary.
+- **Webcam AND n/s file uploads → client-side, real-time on the visitor's GPU** (onnxruntime-web
+  + WebGPU). If the browser runs inference for webcam, it runs it for uploads too — no server compute.
+- **Heavy models → server-side** ("full" image, ultralytics): **YOLO26 m/x** + **YOLOE-26
+  open-vocabulary**. Free tier = CPU-only (slow) — explicit UI disclaimer.
 - Detections logged to PostgreSQL (SQLite locally). Vite/React/Nivo dashboard.
 
 Repo: **https://github.com/EthanJGithub/VisionLog** (pushed, branch `main`).
@@ -32,8 +34,14 @@ Repo: **https://github.com/EthanJGithub/VisionLog** (pushed, branch `main`).
 - Client models committed in BOTH `models/` (server) and `frontend/public/models/` (client).
 
 ### Deploy — next steps (needs YOUR cloud login; `gh`/HF token not available in this env)
-**Recommended: Hugging Face Spaces (free, full app incl. logging).** Repo README already has
-the HF Docker frontmatter (`sdk: docker`, `app_port: 7860`).
+**Recommended: Hugging Face Spaces.** Repo README has the HF Docker frontmatter
+(`sdk: docker`, `app_port: 7860`).
+- **Lean free build (default):** webcam + n/s uploads run on the visitor's GPU; server does
+  logging only. m/x/open-vocab return a clear 503.
+- **Full build (m/x + open-vocab):** build the image with `--build-arg INSTALL_FULL=1`
+  (installs ultralytics). Heavier + downloads weights on first use; server is CPU-only on free
+  tier so m/x/open-vocab are slow (by design, flagged in UI). Verified locally:
+  `yolo26x-ultralytics` upload logged 75 dets; YOLOE-26 prompts `bus,person,backpack` correct.
 1. Create a Neon free Postgres DB → copy its `postgresql+psycopg://...?sslmode=require` URL.
 2. Create a new HF Space (SDK: Docker). Add a secret `DATABASE_URL` = that URL.
 3. Push this repo to the Space's git remote (or use the HF GitHub sync). Build serves on :7860.

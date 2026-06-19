@@ -15,12 +15,11 @@ from src.detect.engine import DetectionEngine
 
 ROOT = Path(config.ROOT)
 
-# model id -> onnx path (relative to repo root)
+# model id -> onnx path (relative to repo root). Only the small variants are served via the
+# lean onnxruntime path; m/x are handled by src/detect/ultra.py (ultralytics, full image).
 SERVER_ONNX: dict[str, Path] = {
     "yolo26n": ROOT / "models" / "yolo26n.onnx",
     "yolo26s": ROOT / "models" / "yolo26s.onnx",
-    "yolo26m": ROOT / "models" / "yolo26m.onnx",
-    "yolo26x": ROOT / "models" / "yolo26x.onnx",
 }
 
 _cache: dict[str, DetectionEngine] = {}
