@@ -81,6 +81,14 @@ export default function VideoUpload({ onLogged }) {
   async function runClientSide(url) {
     setBusy(true);
     try {
+      // No silent failure: confirm the model file is actually served here first.
+      const head = await fetch(selected.url, { method: "HEAD" });
+      if (!head.ok) {
+        throw new Error(
+          `${selected.id} (~${selected.sizeMB}MB) isn't deployed here. It's too large for ` +
+          `GitHub's 100MB limit; it's served on the full deployment. Try n/s/m instead.`
+        );
+      }
       const detector = new ClientDetector(selected.url, {
         inputSize: INPUT_SIZE,
         confThreshold: 0.35,
@@ -229,9 +237,15 @@ export default function VideoUpload({ onLogged }) {
 
       {!clientSide && (
         <p className="error" style={{ marginTop: 4 }}>
-          ⚠ Server-side GPU inference isn't free — on the free tier this model runs on CPU
-          only, so expect a small fraction of real-time speed{selected.sizeMB ? ` (${selected.id} ≈ ${selected.sizeMB}MB)` : ""}.
-          For real-time, pick n or s (they run on your own GPU).
+          ⚠ Open-vocab runs server-side, and server GPU inference isn't free — on the free
+          tier it's CPU-only, so expect a small fraction of real-time speed. The YOLO26
+          n/s/m/x models all run on your own GPU.
+        </p>
+      )}
+      {clientSide && selected.sizeMB >= 80 && (
+        <p className="error" style={{ marginTop: 4 }}>
+          ⬇ One-time ~{selected.sizeMB}MB download to your browser (cached after). Runs on
+          your GPU — needs a reasonably strong one ({selected.id === "yolo26x" ? "~10" : "~20"} fps).
         </p>
       )}
       {isOpenVocab && (

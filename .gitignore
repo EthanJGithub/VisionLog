@@ -27,3 +27,10 @@ mobileclip*.ts
 !models/*.onnx
 !frontend/public/models/*.onnx
 !tests/fixtures/bus.jpg
+
+# yolo26x is 223MB — exceeds GitHub's 100MB file limit. Served on deploy (HF Space),
+# not committed. The UI shows it as unavailable when the file isn't served.
+models/yolo26x.onnx
+frontend/public/models/yolo26x.onnx
+# m is committed only in the client dir (public/models); the server uses ultralytics for m.
+models/yolo26m.onnx

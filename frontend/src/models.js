@@ -1,8 +1,9 @@
 // Model registry shared by the UI.
-//  • `client` models run IN THE BROWSER on the visitor's GPU (WebGPU; WASM/CPU fallback)
-//    — used for BOTH the live webcam AND uploaded files. Free and fast.
-//  • `server` models are too heavy for the browser, so they run on the API. On the free
-//    tier the server is CPU-only (no GPU), so these are much slower — flagged in the UI.
+//  • All YOLO26 detection variants (n/s/m/x) run IN THE BROWSER on the visitor's GPU
+//    (onnxruntime-web + WebGPU; WASM/CPU fallback). Bigger = larger download + lower fps,
+//    but they all run on your own GPU — measured on an NVIDIA card: n≈48, m≈20, x≈11 fps.
+//  • Open-vocabulary (YOLOE) is the only server-side feature: it needs a ~570MB CLIP text
+//    encoder to turn typed prompts into vectors, which is impractical to ship to a browser.
 export const MODELS = [
   {
     id: "yolo26n",
@@ -11,7 +12,7 @@ export const MODELS = [
     sizeMB: 9.5,
     runtimes: ["client"],
     family: "yolo26",
-    note: "Nano. Runs on your GPU in the browser — real-time.",
+    note: "Nano. Real-time on most GPUs (~48 fps).",
   },
   {
     id: "yolo26s",
@@ -20,23 +21,25 @@ export const MODELS = [
     sizeMB: 37,
     runtimes: ["client"],
     family: "yolo26",
-    note: "Small. Runs on your GPU in the browser; needs a stronger GPU for real-time.",
+    note: "Small. Real-time on a decent GPU.",
   },
   {
     id: "yolo26m",
-    label: "YOLO26m — accurate (server)",
-    sizeMB: 80,
-    runtimes: ["server"],
+    label: "YOLO26m — accurate",
+    url: "/models/yolo26m.onnx",
+    sizeMB: 82,
+    runtimes: ["client"],
     family: "yolo26",
-    note: "Medium. Server-side; CPU-only on the free tier (slow — not real-time).",
+    note: "Medium (~82MB download). ~20 fps on a strong GPU.",
   },
   {
     id: "yolo26x",
-    label: "YOLO26x — most accurate (server)",
-    sizeMB: 220,
-    runtimes: ["server"],
+    label: "YOLO26x — most accurate",
+    url: "/models/yolo26x.onnx",
+    sizeMB: 223,
+    runtimes: ["client"],
     family: "yolo26",
-    note: "Extra-large. Server-side; CPU-only on the free tier (slow — not real-time).",
+    note: "Extra-large (~223MB download). ~10 fps on a strong GPU; needs one.",
   },
   {
     id: "yoloe26",
