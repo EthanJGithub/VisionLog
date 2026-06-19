@@ -107,9 +107,17 @@ which server models are present and whether open-vocab is available — no silen
 
 ## 6. Known limitations & roadmap
 
-- **Server upload path on free CPU** is still CPU-bound (sampled at `SAMPLE_FPS`); an
-  optional CUDA onnxruntime backend can be enabled where GPU hardware exists.
-- **Open-vocab cost:** the YOLOE CLIP text encoder is ~570 MB; impractical on the smallest
-  free tiers, hence "full image" only.
-- **Tracking/segmentation** (object IDs across frames) not implemented — detection only.
-- **Client-side open-vocab** (fixed-prompt YOLOE in the browser) is a natural next step.
+- **Open-vocab is a baked 69-class vocabulary, not arbitrary free text.** Fully client-side
+  (no CLIP encoder shipped). To detect new classes you re-export `export_vocab.py` with an
+  updated `VOCAB`.
+- **Arbitrary typed prompts fully client-side — investigated, deferred (real R&D).** Spike
+  findings: YOLOE's MobileCLIP text encoder is loaded *transiently* from a ~570 MB TorchScript
+  inside `get_text_pe` and released (`clip_model` is `None` afterward), so it isn't a clean
+  module to export. Truly-arbitrary client-side text would need (a) extracting that text tower
+  to a browser ONNX + replicating its tokenizer in JS, and (b) a *text-conditioned* YOLOE ONNX
+  that takes embeddings as a runtime input (standard export bakes classes in). Both are
+  multi-step with real uncertainty. An optional server path for arbitrary prompts exists
+  (`src/detect/openvocab.py`), off by default.
+- **Tracking** (object IDs across frames, e.g. ByteTrack → counting) not implemented.
+- **FP16 client models** (smaller download, faster) — pending a proper `half=True` export
+  (a naive post-hoc float16 convert breaks on the model's `Resize` ops).
