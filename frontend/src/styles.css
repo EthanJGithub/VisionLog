@@ -100,4 +100,8 @@ input[type="file"] { color: var(--muted); font-size: 13px; }
 .tag-upload { background: #134e4a; color: #5eead4; }
 .tag-webcam { background: #3b1d4e; color: #e879f9; }
 
+.diag { display: flex; gap: 10px; flex-wrap: wrap; }
+.diag img { width: 100%; max-width: 360px; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
+.feed code, .muted code { background: #0b1322; padding: 1px 5px; border-radius: 4px; }
+
 .foot { margin-top: 20px; text-align: center; }

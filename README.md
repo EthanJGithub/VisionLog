@@ -31,7 +31,9 @@ server (uploads + logging) fits a free Hugging Face Space + Neon free Postgres.
 
 > Part of a production-focused ML/AI portfolio alongside CredAgent (multi-agent loan
 > underwriting) and FraudPulse (real-time fraud detection). See
-> [ARCHITECTURE.md](ARCHITECTURE.md) and [COMPLIANCE.md](COMPLIANCE.md).
+> [ARCHITECTURE.md](ARCHITECTURE.md), [COMPLIANCE.md](COMPLIANCE.md), and
+> [MODEL_CARD.md](MODEL_CARD.md) (measured mAP + latency; reproduce with
+> `python -m src.eval.benchmark`). Live in-app **Benchmarks** tab.
 
 ---
 

@@ -40,6 +40,10 @@ if _FRONTEND_DIST.exists():
     _models_dir = _FRONTEND_DIST / "models"
     if _models_dir.exists():
         app.mount("/models", StaticFiles(directory=_models_dir), name="models")
+    # Benchmark report + plots for the Benchmarks tab.
+    _bench_dir = _FRONTEND_DIST / "benchmarks"
+    if _bench_dir.exists():
+        app.mount("/benchmarks", StaticFiles(directory=_bench_dir), name="benchmarks")
 
     @app.get("/")
     def spa_root() -> FileResponse:

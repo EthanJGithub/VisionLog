@@ -1,0 +1,108 @@
+{
+  "dataset": "COCO128 (128-image COCO subset)",
+  "input_size": 640,
+  "models": [
+    {
+      "id": "yolo26n",
+      "map50": 0.6367,
+      "map50_95": 0.4791,
+      "precision": 0.6844,
+      "recall": 0.5443,
+      "params_m": 2.4,
+      "cpu_ms": 23.5,
+      "webgpu_fps": 47.8
+    },
+    {
+      "id": "yolo26s",
+      "map50": 0.7449,
+      "map50_95": 0.5754,
+      "precision": 0.7333,
+      "recall": 0.6566,
+      "params_m": 9.5,
+      "cpu_ms": 49.5,
+      "webgpu_fps": 38.9
+    },
+    {
+      "id": "yolo26m",
+      "map50": 0.7853,
+      "map50_95": 0.6184,
+      "precision": 0.7028,
+      "recall": 0.7101,
+      "params_m": 20.4,
+      "cpu_ms": 174.4,
+      "webgpu_fps": 19.8
+    },
+    {
+      "id": "yolo26x",
+      "map50": 0.8171,
+      "map50_95": 0.6559,
+      "precision": 0.8024,
+      "recall": 0.7122,
+      "params_m": 55.7,
+      "cpu_ms": 492.1,
+      "webgpu_fps": 10.6
+    }
+  ],
+  "per_class_ap": [
+    {
+      "class": "vase",
+      "ap": 0.995
+    },
+    {
+      "class": "zebra",
+      "ap": 0.97
+    },
+    {
+      "class": "train",
+      "ap": 0.9123
+    },
+    {
+      "class": "bear",
+      "ap": 0.8955
+    },
+    {
+      "class": "airplane",
+      "ap": 0.8746
+    },
+    {
+      "class": "microwave",
+      "ap": 0.8314
+    },
+    {
+      "class": "hot dog",
+      "ap": 0.8283
+    },
+    {
+      "class": "donut",
+      "ap": 0.8168
+    },
+    {
+      "class": "cat",
+      "ap": 0.8164
+    },
+    {
+      "class": "tv",
+      "ap": 0.7955
+    },
+    {
+      "class": "horse",
+      "ap": 0.795
+    },
+    {
+      "class": "pizza",
+      "ap": 0.7897
+    },
+    {
+      "class": "cake",
+      "ap": 0.7844
+    },
+    {
+      "class": "elephant",
+      "ap": 0.7547
+    },
+    {
+      "class": "dog",
+      "ap": 0.7441
+    }
+  ]
+}

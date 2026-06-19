@@ -6,6 +6,7 @@ import ClassCounts from "./components/ClassCounts";
 import DetectionTimeline from "./components/DetectionTimeline";
 import SourceFeed from "./components/SourceFeed";
 import SystemHealth from "./components/SystemHealth";
+import Benchmarks from "./components/Benchmarks";
 
 export default function App() {
   const [mode, setMode] = useState("upload");
@@ -55,22 +56,29 @@ export default function App() {
         <button className={mode === "webcam" ? "tab tab-on" : "tab"} onClick={() => setMode("webcam")}>
           Live webcam (your GPU)
         </button>
+        <button className={mode === "benchmarks" ? "tab tab-on" : "tab"} onClick={() => setMode("benchmarks")}>
+          Benchmarks
+        </button>
       </div>
 
-      <div className="grid">
-        <div className="col">
-          {mode === "upload" ? (
-            <VideoUpload onLogged={refresh} />
-          ) : (
-            <LiveWebcam onLogged={refresh} />
-          )}
-          <SourceFeed sources={sources} onSelect={selectSource} selectedId={selectedId} />
+      {mode === "benchmarks" ? (
+        <Benchmarks />
+      ) : (
+        <div className="grid">
+          <div className="col">
+            {mode === "upload" ? (
+              <VideoUpload onLogged={refresh} />
+            ) : (
+              <LiveWebcam onLogged={refresh} />
+            )}
+            <SourceFeed sources={sources} onSelect={selectSource} selectedId={selectedId} />
+          </div>
+          <div className="col">
+            <ClassCounts data={stats?.class_counts} />
+            <DetectionTimeline detections={timeline} />
+          </div>
         </div>
-        <div className="col">
-          <ClassCounts data={stats?.class_counts} />
-          <DetectionTimeline detections={timeline} />
-        </div>
-      </div>
+      )}
 
       <footer className="foot muted">
         YOLO26 (AGPL-3.0) · everything runs in-browser on your GPU (WebGPU) — n/s/m/x +

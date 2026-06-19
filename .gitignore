@@ -34,3 +34,6 @@ models/yolo26x.onnx
 frontend/public/models/yolo26x.onnx
 # m is committed only in the client dir (public/models); the server uses ultralytics for m.
 models/yolo26m.onnx
+
+# Ultralytics eval scratch
+runs/
