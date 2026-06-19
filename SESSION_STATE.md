@@ -3,11 +3,13 @@
 _Last updated: 2026-06-18_
 
 ## What this is
-Third portfolio project (after CredAgent, FraudPulse): a **hybrid computer-vision** web app.
-- **Webcam AND n/s file uploads → client-side, real-time on the visitor's GPU** (onnxruntime-web
-  + WebGPU). If the browser runs inference for webcam, it runs it for uploads too — no server compute.
-- **Heavy models → server-side** ("full" image, ultralytics): **YOLO26 m/x** + **YOLOE-26
-  open-vocabulary**. Free tier = CPU-only (slow) — explicit UI disclaimer.
+Third portfolio project (after CredAgent, FraudPulse): a CV web app where **all inference
+runs client-side on the visitor's GPU** (onnxruntime-web + WebGPU; CPU/WASM fallback).
+- **Webcam AND uploads → in-browser on the user's GPU.** Verified NVIDIA: n≈48, m≈20, x≈11 fps.
+- **All 5 models client-side:** YOLO26 n/s/m/x (NMS-free) + **YOLOE-26 open-vocab** (curated
+  vocab baked into 41MB ONNX, YOLOv8 head + JS NMS — no CLIP encoder, no server). Open-vocab
+  "prompting" = class-filter chips. x (223MB) served on deploy only (GitHub 100MB limit).
+- Optional server path (ultra.py/openvocab.py) for arbitrary typed prompts / no-WebGPU, off by default.
 - Detections logged to PostgreSQL (SQLite locally). Vite/React/Nivo dashboard.
 
 Repo: **https://github.com/EthanJGithub/VisionLog** (pushed, branch `main`).
