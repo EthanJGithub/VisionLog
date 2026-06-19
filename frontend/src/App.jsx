@@ -7,6 +7,7 @@ import DetectionTimeline from "./components/DetectionTimeline";
 import SourceFeed from "./components/SourceFeed";
 import SystemHealth from "./components/SystemHealth";
 import Benchmarks from "./components/Benchmarks";
+import Chat from "./components/Chat";
 
 export default function App() {
   const [mode, setMode] = useState("upload");
@@ -59,10 +60,15 @@ export default function App() {
         <button className={mode === "benchmarks" ? "tab tab-on" : "tab"} onClick={() => setMode("benchmarks")}>
           Benchmarks
         </button>
+        <button className={mode === "chat" ? "tab tab-on" : "tab"} onClick={() => setMode("chat")}>
+          Ask the data
+        </button>
       </div>
 
       {mode === "benchmarks" ? (
         <Benchmarks />
+      ) : mode === "chat" ? (
+        <Chat />
       ) : (
         <div className="grid">
           <div className="col">

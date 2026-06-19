@@ -12,7 +12,7 @@ from pathlib import Path
 # Make the repo root importable (so `src` resolves on Vercel).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from src import store  # noqa: E402  (light: SQLAlchemy only)
@@ -45,6 +45,16 @@ def health() -> schemas.HealthOut:
         max_duration_seconds=0,
         server_models={},
         open_vocab_available=False,
+        chat_available=False,  # chatbot needs the full container backend (langgraph/groq)
+    )
+
+
+@app.post("/api/v1/chat")
+def chat_unavailable(body: dict | None = None):
+    raise HTTPException(
+        status_code=503,
+        detail="The chatbot runs on the full container backend (LangGraph + Groq), not this "
+        "static/logging deployment.",
     )
 
 

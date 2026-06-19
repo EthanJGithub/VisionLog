@@ -13,6 +13,7 @@ from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 
 from src import config, store, video
 from src.api import schemas
+from src.agent import chat_graph
 from src.detect import openvocab, registry, ultra
 
 router = APIRouter(prefix="/api/v1")
@@ -34,6 +35,7 @@ def health() -> schemas.HealthOut:
         max_duration_seconds=config.MAX_DURATION_SECONDS,
         server_models=server_models,
         open_vocab_available=openvocab.available(),
+        chat_available=chat_graph.available(),
     )
 
 
@@ -177,3 +179,20 @@ def log_client_detections(source_id: int, body: schemas.ClientLogIn) -> schemas.
         dets = [d.model_dump() for d in frame.detections]
         logged += store.add_detections(source_id, frame.frame_number, frame.ts_seconds, dets)
     return schemas.ClientLogResult(logged=logged)
+
+
+# --- Chatbot: LangGraph multi-agent text-to-SQL over the detections DB ----------------
+@router.post("/chat", response_model=schemas.ChatOut)
+def chat(body: schemas.ChatIn) -> schemas.ChatOut:
+    if not chat_graph.available():
+        raise HTTPException(
+            status_code=503,
+            detail="Chatbot needs the full server image (langgraph/langchain-groq) and a "
+            "GROQ_API_KEY. Not available on this deployment.",
+        )
+    if not body.question.strip():
+        raise HTTPException(status_code=422, detail="Ask a question about the detections.")
+    try:
+        return schemas.ChatOut(**chat_graph.ask(body.question.strip()))
+    except Exception as exc:  # pragma: no cover - LLM/runtime errors
+        raise HTTPException(status_code=500, detail=f"chat failed: {str(exc)[:200]}") from exc

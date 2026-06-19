@@ -58,6 +58,7 @@ class HealthOut(BaseModel):
     max_duration_seconds: float
     server_models: dict[str, bool] = {}
     open_vocab_available: bool = False
+    chat_available: bool = False
 
 
 # --- Client-side (WebGPU) logging ---------------------------------------------------
@@ -79,3 +80,16 @@ class ClientLogIn(BaseModel):
 
 class ClientLogResult(BaseModel):
     logged: int
+
+
+# --- Chatbot (LangGraph + Groq text-to-SQL over the detections DB) -------------------
+class ChatIn(BaseModel):
+    question: str
+
+
+class ChatOut(BaseModel):
+    answer: str
+    sql: str | None = None
+    rows: list[dict] = []
+    attempts: int = 0
+    error: str | None = None

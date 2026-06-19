@@ -34,6 +34,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
     }),
+  chat: (question) =>
+    req("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    }),
 };
 
 // Build the ws:// URL for the webcam stream, honoring the dev proxy.

@@ -100,6 +100,21 @@ input[type="file"] { color: var(--muted); font-size: 13px; }
 .tag-upload { background: #134e4a; color: #5eead4; }
 .tag-webcam { background: #3b1d4e; color: #e879f9; }
 
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+.chat-log { max-height: 460px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+.chat-suggest { display: flex; flex-wrap: wrap; gap: 8px; }
+.bubble { padding: 10px 14px; border-radius: 12px; max-width: 85%; }
+.bubble.user { align-self: flex-end; background: #0e2a3a; border: 1px solid #155e75; }
+.bubble.bot { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); }
+.bubble p { margin: 0 0 6px; }
+.bubble pre { background: #0b1322; padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+.bubble details summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+.chat-input { display: flex; gap: 8px; }
+.chat-input input { flex: 1; background: #0b1322; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
+
 .diag { display: flex; gap: 10px; flex-wrap: wrap; }
 .diag img { width: 100%; max-width: 360px; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
 .feed code, .muted code { background: #0b1322; padding: 1px 5px; border-radius: 4px; }
