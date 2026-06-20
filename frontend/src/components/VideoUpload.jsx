@@ -237,7 +237,7 @@ export default function VideoUpload({ onLogged }) {
         const filtered = enabledRef.current
           ? all.filter((x) => enabledRef.current.has(x.class_label))
           : all;
-        const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
+        const tracked = trackerRef.current ? trackerRef.current.update(filtered, v) : filtered;
         attachThumbs(tracked, v, thumbedRef.current, detectorRef.current); // crop (+seg cutout) per object
         for (const t of tracked) {
           if (t.thumb && t.track_id != null) embedderRef.current?.enqueue(t.track_id, t.thumb);

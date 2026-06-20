@@ -153,7 +153,7 @@ export default function LiveStream({ onLogged }) {
       const filtered = enabledRef.current
         ? all.filter((x) => enabledRef.current.has(x.class_label))
         : all;
-      const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
+      const tracked = trackerRef.current ? trackerRef.current.update(filtered, canvas) : filtered;
       if (canvas) attachThumbs(tracked, canvas, thumbedRef.current, detectorRef.current); // crop (+seg cutout)
       for (const t of tracked) {
         if (t.thumb && t.track_id != null) embedderRef.current?.enqueue(t.track_id, t.thumb);
