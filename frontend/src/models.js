@@ -40,7 +40,11 @@ export const MODELS = [
   {
     id: "yolo26x",
     label: "YOLO26x — most accurate",
-    url: `${MODELS_BASE}/yolo26x.onnx`,
+    // x (223MB) exceeds GitHub's 100MB limit so it isn't bundled. Set VITE_X_MODEL_URL to a CDN
+    // copy (e.g. a Hugging Face Hub resolve URL) to enable it; otherwise it falls back to the
+    // local path (404 on deploy → the UI shows "not deployed"). Runs on WebGPU only; very large
+    // models can exhaust GPU memory on weaker cards.
+    url: import.meta.env.VITE_X_MODEL_URL || `${MODELS_BASE}/yolo26x.onnx`,
     sizeMB: 223,
     runtimes: ["client"],
     family: "yolo26",

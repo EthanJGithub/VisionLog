@@ -119,7 +119,7 @@ export default function VideoUpload({ onLogged }) {
         throw new Error(
           `${selected.id} (~${selected.sizeMB}MB) isn't deployed here. It's too large for ` +
           `GitHub's 100MB limit, so it isn't bundled with the site. Try n/s/m instead, or ` +
-          `host it on a CDN and set VITE_MODELS_BASE.`
+          `host it on a CDN${selected.id === "yolo26x" ? " and set VITE_X_MODEL_URL" : " and set VITE_MODELS_BASE"}.`
         );
       }
       const { detector, backend: be, classNames } = await createDetector(selected, {
