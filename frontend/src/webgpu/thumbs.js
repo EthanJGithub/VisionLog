@@ -7,11 +7,11 @@ const _ctx = _c.getContext("2d", { willReadFrequently: false });
 /**
  * @param source  a drawable frame: HTMLVideoElement | HTMLCanvasElement | ImageBitmap
  * @param bbox    {x, y, w, h} in source pixels
- * @param max     longest thumbnail edge in px (default 192 — crisp in the gallery; only ever
- *                downscales, so small/distant objects stay at their native resolution)
+ * @param max     longest thumbnail edge in px (default 256 — crisp in the gallery + when enlarged
+ *                in the lightbox; only ever downscales, so small/distant objects keep native res)
  * @returns       "data:image/jpeg;base64,..." or null if the crop is degenerate
  */
-export function cropThumb(source, bbox, max = 192) {
+export function cropThumb(source, bbox, max = 256) {
   const sw = Math.round(bbox.w);
   const sh = Math.round(bbox.h);
   if (sw < 4 || sh < 4) return null;

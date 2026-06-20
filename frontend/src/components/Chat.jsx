@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
 const SUGGESTIONS = [
@@ -25,7 +25,15 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [zoom, setZoom] = useState(null); // crop shown enlarged in the lightbox, or null
   const listRef = useRef(null);
+
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e) => e.key === "Escape" && setZoom(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
 
   async function send(q) {
     const question = (q ?? input).trim();
@@ -79,8 +87,15 @@ export default function Chat() {
                 {m.crops?.length > 0 && (
                   <div className="crop-grid">
                     {m.crops.map((c, j) => (
-                      <figure key={j} className="crop" title={`${c.class_label} ${Math.round((c.confidence || 0) * 100)}%`}>
-                        <img src={c.thumb} alt={c.class_label} loading="lazy" />
+                      <figure key={j} className="crop">
+                        <button
+                          type="button"
+                          className="crop-btn"
+                          onClick={() => setZoom(c)}
+                          title={`${c.class_label} ${Math.round((c.confidence || 0) * 100)}% — click to enlarge`}
+                        >
+                          <img src={c.thumb} alt={c.class_label} loading="lazy" />
+                        </button>
                         <figcaption>{c.class_label}</figcaption>
                       </figure>
                     ))}
@@ -113,6 +128,20 @@ export default function Chat() {
         />
         <button className="btn" type="submit" disabled={busy || !input.trim()}>Ask</button>
       </form>
+
+      {zoom && (
+        <div className="lightbox" onClick={() => setZoom(null)} role="dialog" aria-modal="true">
+          <figure className="lightbox-fig" onClick={(e) => e.stopPropagation()}>
+            <img src={zoom.thumb} alt={zoom.class_label} />
+            <figcaption>
+              {zoom.class_label}
+              {zoom.confidence ? ` · ${Math.round(zoom.confidence * 100)}% conf` : ""}
+              {zoom.track_id != null ? ` · object #${zoom.track_id}` : ""}
+            </figcaption>
+          </figure>
+          <button className="lightbox-close" onClick={() => setZoom(null)} aria-label="Close">×</button>
+        </div>
+      )}
     </div>
   );
 }

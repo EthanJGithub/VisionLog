@@ -113,9 +113,30 @@ input[type="file"] { color: var(--muted); font-size: 13px; }
   gap: 10px; margin: 8px 0;
 }
 .crop { margin: 0; text-align: center; }
+.crop-btn { padding: 0; border: none; background: none; cursor: zoom-in; display: block; width: 100%; }
 .crop img {
   width: 100%; height: 120px; object-fit: contain; border-radius: 8px;
   border: 1px solid var(--border); background: #0b1322; display: block;
+  transition: border-color .12s;
+}
+.crop-btn:hover img { border-color: var(--accent); }
+
+/* Lightbox: click a crop to view it large. */
+.lightbox {
+  position: fixed; inset: 0; z-index: 50; background: rgba(2, 6, 16, 0.85);
+  display: flex; align-items: center; justify-content: center; cursor: zoom-out;
+}
+.lightbox-fig {
+  margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: auto;
+}
+.lightbox-fig img {
+  max-width: 90vw; max-height: 80vh; border-radius: 10px; border: 1px solid var(--border);
+  background: #0b1322;
+}
+.lightbox-fig figcaption { color: var(--text); font-size: 14px; }
+.lightbox-close {
+  position: fixed; top: 14px; right: 20px; background: none; border: none; color: #e2e8f0;
+  font-size: 34px; line-height: 1; cursor: pointer;
 }
 .crop figcaption { font-size: 11px; color: var(--muted); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
