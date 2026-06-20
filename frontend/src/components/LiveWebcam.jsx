@@ -240,7 +240,7 @@ export default function LiveWebcam({ onLogged }) {
       )}
 
       <div className="video-wrap" style={{ position: "relative", marginTop: 12 }}>
-        <video ref={videoRef} muted playsInline
+        <video ref={videoRef} muted playsInline aria-label="Live webcam with detection overlay"
           style={{ width: "100%", borderRadius: 8, display: "block" }} />
         <BoxOverlay
           detections={dets}

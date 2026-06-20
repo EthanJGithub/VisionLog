@@ -300,7 +300,8 @@ export default function VideoUpload({ onLogged }) {
       )}
       <p className="muted" style={{ marginTop: 8 }}>{selected?.note}</p>
 
-      <input type="file" accept="video/*" onChange={handleFile} disabled={busy} />
+      <input type="file" accept="video/*" onChange={handleFile} disabled={busy}
+        aria-label="Upload a video file for detection" />
       {busy && <p className="muted">{clientSide ? "Loading model onto your GPU…" : "Analysing on the server (CPU)…"}</p>}
       {error && <p className="error">⚠ {error}</p>}
 
@@ -337,6 +338,7 @@ export default function VideoUpload({ onLogged }) {
             src={videoUrl}
             controls
             playsInline
+            aria-label="Uploaded video with detection overlay"
             style={{ width: "100%", borderRadius: 8, display: "block" }}
             onLoadedMetadata={syncDims}
             onTimeUpdate={clientSide ? undefined : (e) => setNow(e.target.currentTime)}

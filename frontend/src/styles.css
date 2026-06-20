@@ -30,6 +30,8 @@ h1 { margin: 0; font-size: 28px; letter-spacing: -0.5px; }
   background: var(--panel); border: 1px solid var(--border);
   padding: 8px 12px; border-radius: 999px;
 }
+/* Reserve the health-pill row so it doesn't shift layout when health loads (CLS). */
+.health-slot { min-height: 38px; display: flex; align-items: center; justify-content: flex-end; }
 .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .dot-ok { background: #34d399; box-shadow: 0 0 8px #34d399; }
 .dot-bad { background: #fb7185; box-shadow: 0 0 8px #fb7185; }
@@ -114,6 +116,8 @@ input[type="file"] { color: var(--muted); font-size: 13px; }
 .bubble details summary { cursor: pointer; color: var(--accent); font-size: 12px; }
 .chat-input { display: flex; gap: 8px; }
 .chat-input input { flex: 1; background: #0b1322; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
+
+.charts-ph { min-height: 620px; } /* reserve chart space to avoid layout shift (CLS) */
 
 .diag { display: flex; gap: 10px; flex-wrap: wrap; }
 .diag img { width: 100%; max-width: 360px; border-radius: 8px; border: 1px solid var(--border); background: #fff; }

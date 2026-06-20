@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import VideoUpload from "./components/VideoUpload";
 import LiveWebcam from "./components/LiveWebcam";
-import ClassCounts from "./components/ClassCounts";
-import DetectionTimeline from "./components/DetectionTimeline";
 import SourceFeed from "./components/SourceFeed";
 import SystemHealth from "./components/SystemHealth";
-import Benchmarks from "./components/Benchmarks";
-import Chat from "./components/Chat";
+// Code-split the heavier / Nivo-using parts out of the initial bundle.
+const Benchmarks = lazy(() => import("./components/Benchmarks"));
+const Chat = lazy(() => import("./components/Chat"));
+const ClassCounts = lazy(() => import("./components/ClassCounts"));
+const DetectionTimeline = lazy(() => import("./components/DetectionTimeline"));
 
 export default function App() {
   const [mode, setMode] = useState("upload");
@@ -47,7 +48,9 @@ export default function App() {
           <h1>VisionLog</h1>
           <p className="tagline">YOLO26 detection on your video → logged to PostgreSQL</p>
         </div>
-        <SystemHealth health={health} totals={stats?.totals} />
+        <div className="health-slot">
+          <SystemHealth health={health} totals={stats?.totals} />
+        </div>
       </header>
 
       <div className="tabs">
@@ -66,9 +69,13 @@ export default function App() {
       </div>
 
       {mode === "benchmarks" ? (
-        <Benchmarks />
+        <Suspense fallback={<div className="panel"><p className="muted">Loading…</p></div>}>
+          <Benchmarks />
+        </Suspense>
       ) : mode === "chat" ? (
-        <Chat />
+        <Suspense fallback={<div className="panel"><p className="muted">Loading…</p></div>}>
+          <Chat />
+        </Suspense>
       ) : (
         <div className="grid">
           <div className="col">
@@ -80,8 +87,20 @@ export default function App() {
             <SourceFeed sources={sources} onSelect={selectSource} selectedId={selectedId} />
           </div>
           <div className="col">
-            <ClassCounts data={stats?.class_counts} />
-            <DetectionTimeline detections={timeline} />
+            {(stats?.totals?.detections ?? 0) > 0 ? (
+              <Suspense fallback={<div className="panel charts-ph" />}>
+                <ClassCounts data={stats?.class_counts} />
+                <DetectionTimeline detections={timeline} />
+              </Suspense>
+            ) : (
+              <div className="panel charts-ph">
+                <h2>Charts</h2>
+                <p className="muted">
+                  Run a detection (upload or webcam) to populate per-class counts and the
+                  detections-over-time chart.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

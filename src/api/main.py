@@ -4,8 +4,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -22,6 +23,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="VisionLog", version="0.1.0", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=500)  # text compression (Lighthouse)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -29,6 +31,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+
+
+@app.middleware("http")
+async def cache_headers(request: Request, call_next):
+    """Long-lived immutable cache for content-hashed build assets (Lighthouse)."""
+    resp = await call_next(request)
+    if request.url.path.startswith("/assets/"):
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return resp
 
 
 # Serve the built SPA (if present). API routes take precedence (registered above).

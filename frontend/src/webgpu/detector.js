@@ -1,11 +1,20 @@
 // Client-side YOLO26 detector — runs in the browser via onnxruntime-web.
 // Uses the WebGPU execution provider when available (real-time on a capable GPU),
 // otherwise falls back to WASM (CPU). The active backend is reported, never hidden.
-import * as ort from "onnxruntime-web/webgpu";
 import { COCO_CLASSES } from "./labels";
 
-// Serve the ORT wasm/jsep binaries from the matching CDN version (avoids bundler config).
-ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/";
+// onnxruntime-web is large (~1MB JS + wasm); load it ON DEMAND (first detection) so it
+// stays out of the initial bundle — keeps the page's first load fast (Lighthouse).
+let _ortPromise = null;
+function getOrt() {
+  if (!_ortPromise) {
+    _ortPromise = import("onnxruntime-web/webgpu").then((ort) => {
+      ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/";
+      return ort;
+    });
+  }
+  return _ortPromise;
+}
 
 /** Returns "webgpu" if the browser exposes a usable GPU adapter, else "wasm". */
 export async function pickBackend() {
@@ -49,6 +58,7 @@ export class ClientDetector {
     this.session = null;
     this.backend = null;
     this.inputName = null;
+    this._ort = null;
     // reusable preprocessing canvas + buffer
     this._canvas = document.createElement("canvas");
     this._ctx = this._canvas.getContext("2d", { willReadFrequently: true });
@@ -56,8 +66,9 @@ export class ClientDetector {
   }
 
   async load() {
+    this._ort = await getOrt();
     this.backend = await pickBackend();
-    this.session = await ort.InferenceSession.create(this.modelUrl, {
+    this.session = await this._ort.InferenceSession.create(this.modelUrl, {
       executionProviders: [this.backend],
       graphOptimizationLevel: "all",
     });
@@ -97,7 +108,7 @@ export class ClientDetector {
   async detect(source, srcW, srcH) {
     const { scale, padX, padY } = this._preprocess(source, srcW, srcH);
     const s = this.inputSize;
-    const tensor = new ort.Tensor("float32", this._chw, [1, 3, s, s]);
+    const tensor = new this._ort.Tensor("float32", this._chw, [1, 3, s, s]);
     const outputs = await this.session.run({ [this.inputName]: tensor });
     const out = outputs[this.session.outputNames[0]];
     const map = (x1, y1, x2, y2) => ({

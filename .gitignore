@@ -37,3 +37,6 @@ models/yolo26m.onnx
 
 # Ultralytics eval scratch
 runs/
+
+# Lighthouse reports
+lh*.json
