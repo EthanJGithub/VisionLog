@@ -242,7 +242,7 @@ export default function VideoUpload({ onLogged }) {
           // Log only CONFIRMED objects (seen across frames) — robust SQL data.
           const confirmed = tracked
             .filter((t) => t._confirmed)
-            .map(({ _confirmed, ...rest }) => rest);
+            .map(({ _confirmed, _coeffs, ...rest }) => rest);
           pendingRef.current.push({
             frame_number: frameNoRef.current++,
             ts_seconds: +v.currentTime.toFixed(3),
@@ -264,7 +264,11 @@ export default function VideoUpload({ onLogged }) {
       pendingRef.current = [];
       if (batch.length && sourceIdRef.current != null) {
         const step = Math.max(1, Math.floor(batch.length / 3));
-        const sampled = batch.filter((_, i) => i % step === 0);
+        // Keep the regular sample PLUS any frame carrying an object thumbnail (captured once per
+        // track) so crops are never dropped by sampling.
+        const sampled = batch.filter(
+          (f, i) => i % step === 0 || f.detections.some((d) => d.thumb)
+        );
         try {
           const r = await api.clientDetections(sourceIdRef.current, sampled);
           setLogged((n) => n + (r.logged || 0));

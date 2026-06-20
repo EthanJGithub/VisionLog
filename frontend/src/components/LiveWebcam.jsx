@@ -160,7 +160,7 @@ export default function LiveWebcam({ onLogged }) {
         // Log only CONFIRMED objects (seen across several frames) — robust SQL data.
         const confirmed = tracked
           .filter((t) => t._confirmed)
-          .map(({ _confirmed, ...rest }) => rest);
+          .map(({ _confirmed, _coeffs, ...rest }) => rest);
         const fn = frameNoRef.current++;
         pendingRef.current.push({ frame_number: fn, ts_seconds: now / 1000, detections: confirmed });
         requestAnimationFrame(loop);
@@ -180,7 +180,11 @@ export default function LiveWebcam({ onLogged }) {
       if (batch.length && sourceIdRef.current != null) {
         // sample: log at most a few frames per flush to keep the DB lean
         const step = Math.max(1, Math.floor(batch.length / 3));
-        const sampled = batch.filter((_, i) => i % step === 0);
+        // Keep the regular sample PLUS any frame carrying an object thumbnail (captured once per
+        // track) so crops are never dropped by sampling.
+        const sampled = batch.filter(
+          (f, i) => i % step === 0 || f.detections.some((d) => d.thumb)
+        );
         try {
           const res = await api.clientDetections(sourceIdRef.current, sampled);
           setLogged((n) => n + (res.logged || 0));

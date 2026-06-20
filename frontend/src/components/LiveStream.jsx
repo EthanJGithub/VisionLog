@@ -158,7 +158,7 @@ export default function LiveStream({ onLogged }) {
         nw: bitmap.width, nh: bitmap.height,
         dw: canvasRef.current?.clientWidth || 0, dh: canvasRef.current?.clientHeight || 0,
       });
-      const confirmed = tracked.filter((t) => t._confirmed).map(({ _confirmed, ...rest }) => rest);
+      const confirmed = tracked.filter((t) => t._confirmed).map(({ _confirmed, _coeffs, ...rest }) => rest);
       pendingRef.current.push({ frame_number: frameNoRef.current++, ts_seconds: now / 1000, detections: confirmed });
       bitmap.close();
     } catch (err) {
@@ -175,7 +175,11 @@ export default function LiveStream({ onLogged }) {
       pendingRef.current = [];
       if (batch.length && sourceIdRef.current != null) {
         const step = Math.max(1, Math.floor(batch.length / 3));
-        const sampled = batch.filter((_, i) => i % step === 0);
+        // Keep the regular sample PLUS any frame carrying an object thumbnail (captured once per
+        // track) so crops are never dropped by sampling.
+        const sampled = batch.filter(
+          (f, i) => i % step === 0 || f.detections.some((d) => d.thumb)
+        );
         try {
           const res = await api.clientDetections(sourceIdRef.current, sampled);
           setLogged((n) => n + (res.logged || 0));
