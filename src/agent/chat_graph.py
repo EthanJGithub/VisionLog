@@ -64,9 +64,11 @@ def author_sql(state: ChatState) -> ChatState:
             f"Previous SQL:\n{state.get('sql', '')}\nFix it."
         )
     sys = SystemMessage(content=(
-        "You are a precise SQL author. Given the schema, write ONE read-only SQL SELECT "
-        "query (SQLite/Postgres compatible) that answers the question. Output ONLY SQL, no "
-        "prose.\n\n" + SCHEMA_DESCRIPTION
+        "You are a precise SQL author. Given the schema, write ONE read-only SQL SELECT query "
+        "that runs on BOTH PostgreSQL and SQLite, answering the question. Output ONLY SQL, no "
+        "prose. Hard rule: never use COUNT(DISTINCT a, b) (multi-column COUNT DISTINCT is "
+        "invalid in PostgreSQL/SQLite); count distinct combinations with a subquery as shown "
+        "in the schema notes.\n\n" + SCHEMA_DESCRIPTION
     ))
     human = HumanMessage(content=f"Question: {state['question']}{retry}")
     sql = _llm().invoke([sys, human]).content

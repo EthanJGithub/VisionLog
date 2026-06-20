@@ -33,10 +33,24 @@ TABLE detections  -- one row per detected object per frame
   bbox_x, bbox_y, bbox_w, bbox_h  REAL  -- pixels
   created_at    TIMESTAMP
 
+Write standard SQL that runs on BOTH PostgreSQL and SQLite. In particular:
+- NEVER use COUNT(DISTINCT a, b) — multi-column COUNT(DISTINCT ...) is invalid in PostgreSQL
+  and SQLite. Count distinct combinations with a subquery instead (see below).
+- Use LOWER() for case-insensitive text matching. Avoid engine-specific functions.
+
 Notes for correct answers:
-- A unique physical object = a distinct (source_id, track_id). To COUNT objects use
-  COUNT(DISTINCT track_id) within a source (track_id repeats across frames).
-- detections has many rows per object (one per frame); don't confuse rows with objects.
+- detections has MANY rows per object (one row per frame); never confuse rows with objects.
+- track_id is the Object ID: stable for one physical object, but only unique WITHIN a source
+  (the same track_id can recur in other sources). So a unique physical object is a distinct
+  (source_id, track_id) PAIR.
+- Count unique objects with a portable subquery (NOT COUNT(DISTINCT source_id, track_id)):
+      SELECT COUNT(*) FROM (SELECT DISTINCT source_id, track_id FROM detections) t
+- Count unique objects per class (e.g. "top classes", "how many cars"):
+      SELECT class_label, COUNT(*) AS objects
+      FROM (SELECT DISTINCT source_id, track_id, class_label FROM detections) t
+      GROUP BY class_label ORDER BY objects DESC
+- "How many <class>" usually means unique objects, not detection rows. If the user explicitly
+  says "detections" or "rows", count rows of `detections` directly instead.
 - Class names are lowercase except PPE 'Person'. Use case-insensitive matching (LOWER()).
 """
 
