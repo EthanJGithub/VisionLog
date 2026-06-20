@@ -31,6 +31,10 @@ from src import store
 from src.agent.schema import SCHEMA_DESCRIPTION, UnsafeSQLError, sanitize_sql
 
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+# Groq vision model for captioning object crops. Configurable so it survives model-id drift; if
+# the call fails (bad id / unavailable), captioning is skipped gracefully.
+GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+CAPTION_MAX = 4  # cap vision calls per gallery request; captions persist so it's one-time/object
 MAX_ATTEMPTS = 3
 INTENTS = ("analytics", "overview", "schema", "gallery", "out_of_scope")
 
@@ -80,6 +84,25 @@ def _llm():
     from langchain_groq import ChatGroq
 
     return ChatGroq(model=GROQ_MODEL, temperature=0, api_key=os.environ["GROQ_API_KEY"])
+
+
+def _caption_crop(thumb: str) -> str | None:
+    """Describe one object crop with a Groq vision model. Best-effort → None on any failure."""
+    from langchain_core.messages import HumanMessage
+    from langchain_groq import ChatGroq
+
+    try:
+        llm = ChatGroq(model=GROQ_VISION_MODEL, temperature=0.2, api_key=os.environ["GROQ_API_KEY"])
+        msg = HumanMessage(content=[
+            {"type": "text", "text": (
+                "In 6-12 words, describe this cropped detected object — appearance, colour, and "
+                "any notable detail. No preamble, no quotes."
+            )},
+            {"type": "image_url", "image_url": {"url": thumb}},
+        ])
+        return llm.invoke([msg]).content.strip() or None
+    except Exception:
+        return None
 
 
 def _json_safe(v: Any) -> Any:
@@ -328,11 +351,25 @@ def gallery(state: ChatState) -> ChatState:
     if not semantic:
         crops = [c for c in crops if not wanted or c["class_label"].lower() == wanted]
 
+    crops = crops[:60]
+    # Caption a few un-captioned crops with a Groq vision model (bounded; persisted so it's
+    # one-time per object). Best-effort — failures just leave the caption empty.
+    captioned = 0
+    for c in crops:
+        if captioned >= CAPTION_MAX:
+            break
+        if not c.get("caption"):
+            cap = _caption_crop(c["thumb"])
+            if cap:
+                c["caption"] = cap
+                store.set_crop_caption(c["source_id"], c["track_id"], cap)
+                captioned += 1
+
     counts = Counter(c["class_label"] for c in crops)
     summary = ", ".join(f"{n} {lbl}" for lbl, n in counts.most_common())
     scope = f" matching '{wanted}'" if wanted else ""
     lead = "Here are the closest matches" if semantic else "Here are the objects that passed"
-    return {"answer": f"{lead}{scope}: {summary}.", "crops": crops[:60]}
+    return {"answer": f"{lead}{scope}: {summary}.", "crops": crops}
 
 
 # --- out-of-scope agent --------------------------------------------------------------

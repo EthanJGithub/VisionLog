@@ -78,6 +78,14 @@ def test_crop_embeddings_and_semantic_search(engine):
     assert 9 not in {h["track_id"] for h in store.search_object_crops([1.0, 0.0, 0.0], engine=engine)}
 
 
+def test_crop_caption_roundtrip(engine):
+    sid = store.create_source("upload", model_version="m", conf_threshold=0.4, engine=engine)
+    store.upsert_object_crop(sid, 1, "dog", 0.9, "data:image/png;base64,dog", engine=engine)
+    assert store.get_object_crops(engine=engine)[0]["caption"] is None
+    store.set_crop_caption(sid, 1, "a small brown dog sitting", engine=engine)
+    assert store.get_object_crops(engine=engine)[0]["caption"] == "a small brown dog sitting"
+
+
 def test_add_detections_and_counts(engine):
     sid = store.create_source(
         "upload", model_version="m", conf_threshold=0.3, engine=engine

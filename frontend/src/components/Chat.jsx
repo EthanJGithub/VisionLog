@@ -103,7 +103,10 @@ export default function Chat() {
                         >
                           <img src={c.thumb} alt={c.class_label} loading="lazy" />
                         </button>
-                        <figcaption>{c.class_label}</figcaption>
+                        <figcaption>
+                          {c.class_label}
+                          {c.caption && <span className="crop-cap">{c.caption}</span>}
+                        </figcaption>
                       </figure>
                     ))}
                   </div>
@@ -144,6 +147,7 @@ export default function Chat() {
               {zoom.class_label}
               {zoom.confidence ? ` · ${Math.round(zoom.confidence * 100)}% conf` : ""}
               {zoom.track_id != null ? ` · object #${zoom.track_id}` : ""}
+              {zoom.caption ? <div className="lightbox-cap">“{zoom.caption}”</div> : null}
             </figcaption>
           </figure>
           <button className="lightbox-close" onClick={() => setZoom(null)} aria-label="Close">×</button>

@@ -84,6 +84,7 @@ class ObjectCrop(Base):
     # portable JSON + ranked by cosine in Python — same code path on SQLite (tests) and Postgres,
     # no extension. pgvector is the drop-in scale path if crop volume ever grows large.
     embedding = Column(Text, nullable=True)
+    caption = Column(Text, nullable=True)             # Groq-vision description, generated lazily
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     __table_args__ = (UniqueConstraint("source_id", "track_id", name="uq_crop_source_track"),)
@@ -280,8 +281,21 @@ def upsert_object_crop(
 def _crop_dict(r: "ObjectCrop") -> dict[str, Any]:
     return {
         "source_id": r.source_id, "track_id": r.track_id, "class_label": r.class_label,
-        "confidence": r.confidence, "thumb": r.thumb,
+        "confidence": r.confidence, "thumb": r.thumb, "caption": r.caption,
     }
+
+
+def set_crop_caption(source_id: int, track_id: int, caption: str, *, engine=None) -> None:
+    """Persist a Groq-vision caption for one object crop."""
+    with Session(engine or get_engine()) as session:
+        crop = session.scalar(
+            select(ObjectCrop).where(
+                ObjectCrop.source_id == source_id, ObjectCrop.track_id == track_id
+            )
+        )
+        if crop is not None:
+            crop.caption = caption
+            session.commit()
 
 
 def get_object_crops(
