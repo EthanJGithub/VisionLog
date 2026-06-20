@@ -90,7 +90,9 @@ To keep the SQL data "mostly correct", logged detections are not raw per-frame b
   the *predicted* box (IoU), with a center-distance/size fallback for fast or briefly-occluded
   objects. This assigns a **stable `track_id`** to each physical object across frames (pure
   frame-to-frame IoU re-IDed anything moving faster than ~its own width/frame). Persisted as the
-  `detections.track_id` column (the "Object ID").
+  `detections.track_id` column (the "Object ID"). A lightweight **color-histogram appearance
+  cue** (64-bin RGB from a 16×16 crop — no model) refines association and widens the match gate
+  when appearance strongly matches, improving re-identification through occlusion.
 - **Confirmation gating.** A track must be seen in ≥ `minHits` (default 3) frames before any
   of its detections are logged — this drops single-frame false-positive flicker.
 - **Adjustable confidence.** A UI slider (default **0.40**) sets the detection threshold live
@@ -98,6 +100,30 @@ To keep the SQL data "mostly correct", logged detections are not raw per-frame b
 
 Each logged row therefore carries **Object ID (`track_id`), class, confidence** (+ bbox,
 frame, timestamp). `totals.objects` = distinct tracked objects.
+
+## 3b. Multimodal chatbot — "Ask the data" ([src/agent/chat_graph.py](src/agent/chat_graph.py))
+
+A LangGraph pipeline routes each question (LLM intent classifier + keyword fallback) to a
+specialized agent, so vague/meta/visual questions don't get a brittle single SQL guess:
+
+- **analytics** — self-correcting text-to-SQL (author → guard → execute → answer; the guard
+  ([src/agent/schema.py](src/agent/schema.py)) allows only single-statement SELECTs).
+- **overview** — pre-defined audited aggregates → narrative (robust, no LLM-authored SQL).
+- **schema** — explains what's queryable + the classes seen.
+- **gallery** — visual recall. Each confirmed object is cropped to a thumbnail
+  ([frontend/src/webgpu/thumbs.js](frontend/src/webgpu/thumbs.js)); for the YOLOE seg model the
+  crop is a **background-removed cutout** (mask assembled from the proto output on demand). Crops
+  are stored one-per-object (`object_crops`) and shown as a clickable grid.
+  - **Semantic search.** CLIP (Xenova/clip-vit-base-patch32 via transformers.js, client-side)
+    embeds each crop (background, off the detection loop) and the visual query; the gallery agent
+    ranks crops by cosine similarity (stored as JSON, ranked in Python — portable on SQLite +
+    Postgres; pgvector is the scale path). "show me the red truck" → nearest crops.
+  - **Vision captions.** A Groq vision model (`GROQ_VISION_MODEL`) describes crops lazily
+    (bounded per request, persisted), shown under each thumbnail.
+- **out_of_scope** — polite decline.
+
+Everything multimodal is best-effort: CLIP/vision failures degrade gracefully (search → class
+filter; no caption) and never block detection or the answer.
 
 ## 4. Determinism, guardrails, observability
 
