@@ -31,7 +31,25 @@ MAX_DURATION_SECONDS = float(os.getenv("VISIONLOG_MAX_DURATION_SECONDS", "60"))
 # --- Storage -------------------------------------------------------------------------
 # Postgres (Neon) in prod; SQLite locally / in tests. Explicit, configured choice — not
 # a silent fallback. e.g. postgresql+psycopg://user:pw@host/db
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{ROOT / 'data' / 'visionlog.db'}")
+
+
+def _normalize_db_url(url: str) -> str:
+    """Pin managed-Postgres URLs to the psycopg (v3) driver.
+
+    Neon/Heroku/Railway inject ``postgres://`` or ``postgresql://`` URLs, which SQLAlchemy maps
+    to the psycopg2 driver — but this project installs psycopg **v3**. Rewrite the scheme to
+    ``postgresql+psycopg://`` so the managed connection string works as-is, with no manual edit.
+    SQLite and already-qualified URLs (``postgresql+psycopg://``) pass through unchanged.
+    """
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
+DATABASE_URL = _normalize_db_url(
+    os.getenv("DATABASE_URL", f"sqlite:///{ROOT / 'data' / 'visionlog.db'}")
+)
 
 # --- App -----------------------------------------------------------------------------
 CORS_ORIGINS = os.getenv("VISIONLOG_CORS_ORIGINS", "*").split(",")

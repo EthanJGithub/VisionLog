@@ -1,7 +1,25 @@
 """Store CRUD + aggregation against in-memory SQLite (hermetic)."""
 from __future__ import annotations
 
+import pytest
+
 from src import store
+from src.config import _normalize_db_url
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("postgres://u:p@h/db?sslmode=require", "postgresql+psycopg://u:p@h/db?sslmode=require"),
+        ("postgresql://u:p@h/db", "postgresql+psycopg://u:p@h/db"),
+        ("postgresql+psycopg://u:p@h/db", "postgresql+psycopg://u:p@h/db"),
+        ("sqlite:///x.db", "sqlite:///x.db"),
+    ],
+)
+def test_normalize_db_url_pins_psycopg_driver(raw, expected):
+    # Managed Postgres (Neon) hands out postgres[ql]:// URLs; we must pin the psycopg v3 driver
+    # so they connect without a manual scheme edit. SQLite/qualified URLs pass through unchanged.
+    assert _normalize_db_url(raw) == expected
 
 
 def _det(label: str, conf: float = 0.9) -> dict:
