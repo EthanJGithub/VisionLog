@@ -7,10 +7,11 @@ const _ctx = _c.getContext("2d", { willReadFrequently: false });
 /**
  * @param source  a drawable frame: HTMLVideoElement | HTMLCanvasElement | ImageBitmap
  * @param bbox    {x, y, w, h} in source pixels
- * @param max     longest thumbnail edge in px (default 64)
+ * @param max     longest thumbnail edge in px (default 192 — crisp in the gallery; only ever
+ *                downscales, so small/distant objects stay at their native resolution)
  * @returns       "data:image/jpeg;base64,..." or null if the crop is degenerate
  */
-export function cropThumb(source, bbox, max = 64) {
+export function cropThumb(source, bbox, max = 192) {
   const sw = Math.round(bbox.w);
   const sh = Math.round(bbox.h);
   if (sw < 4 || sh < 4) return null;
@@ -19,9 +20,10 @@ export function cropThumb(source, bbox, max = 64) {
   const h = Math.max(1, Math.round(sh * scale));
   _c.width = w;
   _c.height = h;
+  _ctx.imageSmoothingQuality = "high";
   try {
     _ctx.drawImage(source, Math.round(bbox.x), Math.round(bbox.y), sw, sh, 0, 0, w, h);
-    return _c.toDataURL("image/jpeg", 0.6);
+    return _c.toDataURL("image/jpeg", 0.85);
   } catch {
     return null; // e.g. tainted canvas / source not yet drawable
   }
