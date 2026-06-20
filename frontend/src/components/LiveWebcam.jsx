@@ -241,6 +241,7 @@ export default function LiveWebcam({ onLogged }) {
           }}
           onAll={() => { const a = new Set(vocab); setEnabled(a); enabledRef.current = a; }}
           onNone={() => { const e = new Set(); setEnabled(e); enabledRef.current = e; }}
+          onSet={(s) => { setEnabled(s); enabledRef.current = s; }}
         />
       )}
 

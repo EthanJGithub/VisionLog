@@ -239,6 +239,7 @@ export default function LiveStream({ onLogged }) {
           onToggle={(c) => { const n = new Set(enabled); n.has(c) ? n.delete(c) : n.add(c); setEnabled(n); enabledRef.current = n; }}
           onAll={() => { const a = new Set(vocab); setEnabled(a); enabledRef.current = a; }}
           onNone={() => { const e = new Set(); setEnabled(e); enabledRef.current = e; }}
+          onSet={(s) => { setEnabled(s); enabledRef.current = s; }}
         />
       )}
 

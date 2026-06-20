@@ -26,6 +26,7 @@ export default function VideoUpload({ onLogged }) {
   const frameNoRef = useRef(0);
   const enabledRef = useRef(null); // open-vocab class filter (Set), or null = all
   const trackerRef = useRef(null); // stable Object IDs across frames
+  const fileRef = useRef(null);    // the chosen File (kept until the user clicks Start)
 
   const [vocab, setVocab] = useState(null);
   const [enabled, setEnabled] = useState(new Set());
@@ -39,6 +40,7 @@ export default function VideoUpload({ onLogged }) {
   const [prompts, setPrompts] = useState("");
   const [videoUrl, setVideoUrl] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [running, setRunning] = useState(false); // client detection loop active (for Start/Stop UI)
   const [error, setError] = useState(null);
   const [fileName, setFileName] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -64,9 +66,33 @@ export default function VideoUpload({ onLogged }) {
     detectorRef.current?.dispose();
     detectorRef.current = null;
     trackerRef.current = null;
+    setRunning(false);
   }, []);
 
   useEffect(() => () => teardown(), [teardown]);
+
+  // Preload an open-vocab/fine-tune model's vocabulary as soon as it's SELECTED (not after the
+  // model downloads), so the class filter is usable — and you can pre-type "truck" — before Start.
+  useEffect(() => {
+    const m = MODELS.find((x) => x.id === model);
+    if (!m?.vocabUrl) {
+      setVocab(null);
+      enabledRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    fetch(m.vocabUrl)
+      .then((r) => r.json())
+      .then((meta) => {
+        if (cancelled) return;
+        setVocab(meta.classes);
+        const all = new Set(meta.classes);
+        setEnabled(all);
+        enabledRef.current = all;
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [model]);
 
   // Switching model resets the loaded clip so the two paths never mix.
   function onModelChange(id) {
@@ -78,32 +104,47 @@ export default function VideoUpload({ onLogged }) {
     setFps(0);
     setLogged(0);
     setError(null);
-    setVocab(null);
-    enabledRef.current = null;
+    setFileName(null);
+    fileRef.current = null;
+    // vocab/enabled are (re)loaded by the effect on `model`.
   }
 
-  async function handleFiles(files) {
+  // Selecting a file only STAGES it (shows a paused preview). Detection starts on the Start
+  // button — so you can set the model/classes first and it doesn't auto-run.
+  function handleFiles(files) {
     const file = files?.[0];
     if (!file) return;
     if (!file.type.startsWith("video/")) {
       setError(`"${file.name}" isn't a video file.`);
       return;
     }
+    teardown();
+    fileRef.current = file;
     setFileName(file.name);
     setError(null);
     setServerResult(null);
     setLiveDets([]);
     setLogged(0);
-    const url = URL.createObjectURL(file);
-    setVideoUrl(url);
-    if (clientSide) await runClientSide(url);
-    else await runServerSide(file);
+    setFps(0);
+    setVideoUrl(URL.createObjectURL(file));
   }
 
   function onDrop(e) {
     e.preventDefault();
     setDragging(false);
-    if (!busy) handleFiles(e.dataTransfer.files);
+    if (!busy && !running) handleFiles(e.dataTransfer.files);
+  }
+
+  async function start() {
+    if (!fileRef.current || busy || running) return;
+    if (clientSide) await runClientSide(videoUrl);
+    else await runServerSide(fileRef.current);
+  }
+
+  function stop() {
+    teardown();
+    const v = videoRef.current;
+    if (v) v.pause();
   }
 
   // ---- client-side (local GPU) -----------------------------------------------------
@@ -131,9 +172,12 @@ export default function VideoUpload({ onLogged }) {
       setBackend(be);
       if (classNames) {
         setVocab(classNames);
-        const all = new Set(classNames);
-        setEnabled(all);
-        enabledRef.current = all;
+        // Preserve the user's pre-Start class selection; only default to "all" if none set.
+        if (!enabledRef.current) {
+          const all = new Set(classNames);
+          setEnabled(all);
+          enabledRef.current = all;
+        }
       } else {
         setVocab(null);
         enabledRef.current = null;
@@ -149,6 +193,7 @@ export default function VideoUpload({ onLogged }) {
       pendingRef.current = [];
       runningRef.current = true;
       loggingRef.current = true;
+      setRunning(true);
       setBusy(false);
 
       // src is bound to videoUrl in JSX (set above); by now React has rendered it.
@@ -305,7 +350,7 @@ export default function VideoUpload({ onLogged }) {
           your GPU — needs a reasonably strong one ({selected.id === "yolo26x" ? "~10" : "~20"} fps).
         </p>
       )}
-      {isOpenVocab && (
+      {isOpenVocab && !clientSide && (
         <input
           className="prompts"
           type="text"
@@ -316,6 +361,22 @@ export default function VideoUpload({ onLogged }) {
         />
       )}
       <p className="muted" style={{ marginTop: 8 }}>{selected?.note}</p>
+
+      {clientSide && vocab && (
+        <ClassFilter
+          classes={vocab}
+          enabled={enabled}
+          onToggle={(c) => {
+            const next = new Set(enabled);
+            next.has(c) ? next.delete(c) : next.add(c);
+            setEnabled(next);
+            enabledRef.current = next;
+          }}
+          onAll={() => { const a = new Set(vocab); setEnabled(a); enabledRef.current = a; }}
+          onNone={() => { const e = new Set(); setEnabled(e); enabledRef.current = e; }}
+          onSet={(s) => { setEnabled(s); enabledRef.current = s; }}
+        />
+      )}
 
       <label
         className={`dropzone${dragging ? " dz-over" : ""}${busy ? " dz-busy" : ""}`}
@@ -336,25 +397,22 @@ export default function VideoUpload({ onLogged }) {
           {fileName ? `Selected: ${fileName}` : "MP4 / WebM / MOV"}
         </span>
       </label>
-      {busy && <p className="muted">{clientSide ? "Loading model onto your GPU…" : "Analysing on the server (CPU)…"}</p>}
+
+      <div className="controls" style={{ marginTop: 12 }}>
+        {!running ? (
+          <button className="btn" onClick={start} disabled={!fileRef.current || busy}>
+            {busy
+              ? (clientSide ? "Loading model…" : "Analysing…")
+              : (clientSide ? "Start detection" : "Analyse on server")}
+          </button>
+        ) : (
+          <button className="btn btn-stop" onClick={stop}>Stop</button>
+        )}
+        {!fileRef.current && <span className="muted">Choose a video, then press Start.</span>}
+      </div>
       {error && <p className="error">⚠ {error}</p>}
 
-      {clientSide && vocab && (
-        <ClassFilter
-          classes={vocab}
-          enabled={enabled}
-          onToggle={(c) => {
-            const next = new Set(enabled);
-            next.has(c) ? next.delete(c) : next.add(c);
-            setEnabled(next);
-            enabledRef.current = next;
-          }}
-          onAll={() => { const a = new Set(vocab); setEnabled(a); enabledRef.current = a; }}
-          onNone={() => { const e = new Set(); setEnabled(e); enabledRef.current = e; }}
-        />
-      )}
-
-      {clientSide && videoUrl && (
+      {clientSide && running && (
         <div className="stat-row" style={{ marginTop: 10 }}>
           <span className={`chip ${isCpu ? "chip-warn" : "chip-ok"}`}>
             {backend === "webgpu" ? "⚡ WebGPU (your GPU)" : backend === "wasm" ? "CPU (WASM) — not real-time" : "loading…"}
