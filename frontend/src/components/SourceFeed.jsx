@@ -1,5 +1,6 @@
-/** Recent logged sources (upload/webcam sessions) from Postgres. */
-export default function SourceFeed({ sources, onSelect, selectedId }) {
+/** Recent logged sources (upload/webcam sessions) from Postgres.
+ *  Click a row to scope the charts to that run; the × deletes the run. */
+export default function SourceFeed({ sources, onSelect, onDelete, selectedId }) {
   return (
     <div className="panel">
       <h2>Logged sources</h2>
@@ -9,7 +10,7 @@ export default function SourceFeed({ sources, onSelect, selectedId }) {
         <table className="feed">
           <thead>
             <tr>
-              <th>id</th><th>kind</th><th>name</th><th>frames</th><th>when</th>
+              <th>id</th><th>kind</th><th>name</th><th>frames</th><th>when</th><th />
             </tr>
           </thead>
           <tbody>
@@ -25,6 +26,16 @@ export default function SourceFeed({ sources, onSelect, selectedId }) {
                 <td>{s.frame_count}</td>
                 <td className="muted">
                   {s.created_at ? new Date(s.created_at).toLocaleTimeString() : "—"}
+                </td>
+                <td>
+                  <button
+                    className="row-del"
+                    title={`Delete run #${s.id}`}
+                    aria-label={`Delete run #${s.id}`}
+                    onClick={(e) => { e.stopPropagation(); onDelete?.(s.id); }}
+                  >
+                    ×
+                  </button>
                 </td>
               </tr>
             ))}

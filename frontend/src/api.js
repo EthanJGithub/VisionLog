@@ -11,9 +11,12 @@ async function req(path, options = {}) {
 
 export const api = {
   health: () => req("/health"),
-  stats: () => req("/stats"),
+  // stats scoped to one run when sourceId is given, else all runs.
+  stats: (sourceId) => req(sourceId != null ? `/stats?source_id=${sourceId}` : "/stats"),
   sources: () => req("/sources"),
   detections: (sourceId) => req(`/sources/${sourceId}/detections`),
+  deleteSource: (sourceId) => req(`/sources/${sourceId}`, { method: "DELETE" }),
+  clearAll: () => req("/sources", { method: "DELETE" }),
   upload: (file, { model = "yolo26n", prompts = "" } = {}) => {
     const form = new FormData();
     form.append("file", file);

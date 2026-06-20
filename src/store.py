@@ -207,13 +207,45 @@ def class_counts(engine=None, source_id: int | None = None) -> list[dict[str, An
         return [{"class_label": label, "count": n} for label, n in session.execute(stmt)]
 
 
-def totals(engine=None) -> dict[str, int]:
+def totals(engine=None, source_id: int | None = None) -> dict[str, int]:
+    """Totals, optionally scoped to one source/run. A unique object is a distinct
+    (source_id, track_id) PAIR (track_id is only unique within a source), so we count
+    distinct pairs via a portable subquery rather than COUNT(DISTINCT track_id)."""
     with Session(engine or get_engine()) as session:
+        det_q = select(func.count(DetectionRow.id))
+        pair_q = (
+            select(DetectionRow.source_id, DetectionRow.track_id)
+            .where(DetectionRow.track_id.isnot(None))
+            .distinct()
+        )
+        if source_id is not None:
+            det_q = det_q.where(DetectionRow.source_id == source_id)
+            pair_q = pair_q.where(DetectionRow.source_id == source_id)
+            sources = 1 if session.get(Source, source_id) is not None else 0
+        else:
+            sources = session.scalar(select(func.count(Source.id))) or 0
         return {
-            "sources": session.scalar(select(func.count(Source.id))) or 0,
-            "detections": session.scalar(select(func.count(DetectionRow.id))) or 0,
-            # distinct (source, track_id) pairs = unique tracked objects logged
-            "objects": session.scalar(
-                select(func.count(func.distinct(DetectionRow.track_id)))
-            ) or 0,
+            "sources": sources,
+            "detections": session.scalar(det_q) or 0,
+            "objects": session.scalar(select(func.count()).select_from(pair_q.subquery())) or 0,
         }
+
+
+def delete_source(source_id: int, engine=None) -> bool:
+    """Delete one run and its detections (cascade). Returns False if it didn't exist."""
+    with Session(engine or get_engine()) as session:
+        src = session.get(Source, source_id)
+        if src is None:
+            return False
+        session.delete(src)  # cascade removes its detection rows
+        session.commit()
+        return True
+
+
+def clear_all(engine=None) -> dict[str, int]:
+    """Delete ALL runs + detections (user-initiated reset). Returns counts removed."""
+    with Session(engine or get_engine()) as session:
+        dets = session.query(DetectionRow).delete()  # children first (FK)
+        srcs = session.query(Source).delete()
+        session.commit()
+        return {"sources": srcs, "detections": dets}

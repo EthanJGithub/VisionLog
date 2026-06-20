@@ -148,11 +148,26 @@ def source_detections(source_id: int) -> list[schemas.DetectionOut]:
     return [schemas.DetectionOut(**d) for d in store.get_detections(source_id)]
 
 
+@router.delete("/sources/{source_id}")
+def delete_source(source_id: int) -> dict:
+    """Delete one run (and its detections). 404 if it doesn't exist."""
+    if not store.delete_source(source_id):
+        raise HTTPException(status_code=404, detail=f"source {source_id} not found")
+    return {"deleted": source_id}
+
+
+@router.delete("/sources")
+def clear_all_sources() -> dict:
+    """Reset: delete ALL runs + detections (user-initiated)."""
+    return store.clear_all()
+
+
 @router.get("/stats", response_model=schemas.StatsOut)
-def stats() -> schemas.StatsOut:
+def stats(source_id: int | None = None) -> schemas.StatsOut:
+    # source_id scopes the totals + per-class counts to one run; omitted = all runs.
     return schemas.StatsOut(
-        totals=store.totals(),
-        class_counts=[schemas.ClassCount(**c) for c in store.class_counts()],
+        totals=store.totals(source_id=source_id),
+        class_counts=[schemas.ClassCount(**c) for c in store.class_counts(source_id=source_id)],
     )
 
 

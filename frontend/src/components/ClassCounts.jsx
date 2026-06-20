@@ -7,11 +7,13 @@ const theme = {
   tooltip: { container: { background: "#0b1020", color: "#e2e8f0" } },
 };
 
-export default function ClassCounts({ data }) {
+export default function ClassCounts({ data, scopeLabel }) {
   const top = (data || []).slice(0, 12);
   return (
     <div className="panel">
-      <h2>Detections by class</h2>
+      <h2>
+        Detections by class{scopeLabel ? <span className="muted"> · {scopeLabel}</span> : null}
+      </h2>
       {top.length === 0 ? (
         <p className="muted">No detections logged yet.</p>
       ) : (

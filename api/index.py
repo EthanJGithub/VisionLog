@@ -110,10 +110,27 @@ def source_detections(source_id: int) -> list[schemas.DetectionOut]:
     return [schemas.DetectionOut(**d) for d in store.get_detections(source_id)]
 
 
+@app.delete("/api/v1/sources/{source_id}")
+def delete_source(source_id: int) -> dict:
+    """Delete one run (and its detections). 404 if it doesn't exist."""
+    _ensure_db()
+    if not store.delete_source(source_id):
+        raise HTTPException(status_code=404, detail=f"source {source_id} not found")
+    return {"deleted": source_id}
+
+
+@app.delete("/api/v1/sources")
+def clear_all_sources() -> dict:
+    """Reset: delete ALL runs + detections (user-initiated)."""
+    _ensure_db()
+    return store.clear_all()
+
+
 @app.get("/api/v1/stats", response_model=schemas.StatsOut)
-def stats() -> schemas.StatsOut:
+def stats(source_id: int | None = None) -> schemas.StatsOut:
+    # source_id scopes the totals + per-class counts to one run; omitted = all runs.
     _ensure_db()
     return schemas.StatsOut(
-        totals=store.totals(),
-        class_counts=[schemas.ClassCount(**c) for c in store.class_counts()],
+        totals=store.totals(source_id=source_id),
+        class_counts=[schemas.ClassCount(**c) for c in store.class_counts(source_id=source_id)],
     )

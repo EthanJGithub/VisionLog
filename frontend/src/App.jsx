@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import VideoUpload from "./components/VideoUpload";
 import LiveWebcam from "./components/LiveWebcam";
@@ -15,30 +15,47 @@ export default function App() {
   const [health, setHealth] = useState(null);
   const [stats, setStats] = useState(null);
   const [sources, setSources] = useState([]);
+  // selectedId === null → "All runs"; otherwise stats/charts are scoped to that run.
   const [selectedId, setSelectedId] = useState(null);
   const [timeline, setTimeline] = useState([]);
+  // Ref so refresh() (a stable callback, also used as onLogged) always reads the live scope.
+  const scopeRef = useRef(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [s, src] = await Promise.all([api.stats(), api.sources()]);
+      const scope = scopeRef.current;
+      const [s, src] = await Promise.all([api.stats(scope), api.sources()]);
       setStats(s);
       setSources(src);
-      const sel = selectedId ?? src[0]?.id ?? null;
-      setSelectedId(sel);
-      if (sel != null) setTimeline(await api.detections(sel));
+      // Timeline shows the selected run, or the most recent run when viewing "All".
+      const tlId = scope ?? src[0]?.id ?? null;
+      setTimeline(tlId != null ? await api.detections(tlId) : []);
     } catch {
       /* surfaced via health dot */
     }
-  }, [selectedId]);
+  }, []);
 
   useEffect(() => {
     api.health().then(setHealth).catch(() => setHealth(null));
     refresh();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function selectSource(id) {
+  async function selectScope(id) {
     setSelectedId(id);
-    setTimeline(await api.detections(id));
+    scopeRef.current = id;
+    await refresh();
+  }
+
+  async function resetAll() {
+    if (!window.confirm("Delete ALL logged runs and detections? This cannot be undone.")) return;
+    await api.clearAll();
+    await selectScope(null);
+  }
+
+  async function deleteRun(id) {
+    if (!window.confirm(`Delete run #${id} and its detections?`)) return;
+    await api.deleteSource(id);
+    await selectScope(scopeRef.current === id ? null : scopeRef.current);
   }
 
   return (
@@ -84,12 +101,47 @@ export default function App() {
             ) : (
               <LiveWebcam onLogged={refresh} />
             )}
-            <SourceFeed sources={sources} onSelect={selectSource} selectedId={selectedId} />
+            <SourceFeed
+              sources={sources}
+              onSelect={selectScope}
+              onDelete={deleteRun}
+              selectedId={selectedId}
+            />
           </div>
           <div className="col">
+            {sources.length > 0 && (
+              <div className="panel">
+                <div className="scope-bar">
+                  <label>
+                    View
+                    <select
+                      value={selectedId ?? ""}
+                      onChange={(e) =>
+                        selectScope(e.target.value === "" ? null : Number(e.target.value))
+                      }
+                    >
+                      <option value="">All runs ({sources.length})</option>
+                      {sources.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          #{s.id} · {s.kind}
+                          {s.filename ? ` · ${s.filename}` : ""} · {s.frame_count} frames
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span className="spacer" />
+                  <button className="btn-danger" onClick={resetAll}>
+                    Reset all data
+                  </button>
+                </div>
+              </div>
+            )}
             {(stats?.totals?.detections ?? 0) > 0 ? (
               <Suspense fallback={<div className="panel charts-ph" />}>
-                <ClassCounts data={stats?.class_counts} />
+                <ClassCounts
+                  data={stats?.class_counts}
+                  scopeLabel={selectedId != null ? `run #${selectedId}` : "all runs"}
+                />
                 <DetectionTimeline detections={timeline} />
               </Suspense>
             ) : (
