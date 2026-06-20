@@ -80,7 +80,25 @@ export default function LiveWebcam({ onLogged }) {
         enabledRef.current = null;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      } catch (e) {
+        // getUserMedia DOMExceptions are cryptic ("Could not start video source") — map them
+        // to actionable guidance (no silent failure).
+        const hints = {
+          NotReadableError:
+            "Camera couldn't start — it's likely in use by another app (Zoom, Teams, OBS, " +
+            "another browser tab) or blocked by the OS. Close those and try again.",
+          NotAllowedError:
+            "Camera permission was denied. Allow camera access for this site (the camera icon " +
+            "in the address bar) and retry.",
+          NotFoundError: "No camera was found on this device.",
+          OverconstrainedError: "No camera matched the requested settings.",
+          SecurityError: "Camera blocked — the page must be served over HTTPS.",
+        };
+        throw new Error(hints[e.name] || `Camera error: ${e.message || e.name}`);
+      }
       const video = videoRef.current;
       video.srcObject = stream;
       await video.play();
