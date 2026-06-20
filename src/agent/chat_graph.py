@@ -65,6 +65,7 @@ def available() -> bool:
 
 class ChatState(TypedDict, total=False):
     question: str
+    query_embedding: list[float]
     intent: str
     sql: str
     safe_sql: str
@@ -315,16 +316,23 @@ def gallery(state: ChatState) -> ChatState:
 
     labels = {c["class_label"].lower() for c in crops}
     wanted = _wanted_class(state["question"], labels)
-    if wanted:
-        crops = [c for c in crops if c["class_label"].lower() == wanted]
+
+    # Semantic visual search when the client supplied a CLIP query embedding ("the red truck",
+    # "a person in white"): rank crops by cosine similarity (optionally within the named class).
+    qvec = state.get("query_embedding")
+    semantic = False
+    if qvec:
+        ranked = store.search_object_crops(qvec, class_label=wanted, limit=30)
+        if ranked:
+            crops, semantic = ranked, True
+    if not semantic:
+        crops = [c for c in crops if not wanted or c["class_label"].lower() == wanted]
 
     counts = Counter(c["class_label"] for c in crops)
     summary = ", ".join(f"{n} {lbl}" for lbl, n in counts.most_common())
     scope = f" matching '{wanted}'" if wanted else ""
-    return {
-        "answer": f"Here are the objects that passed{scope}: {summary}.",
-        "crops": crops[:60],
-    }
+    lead = "Here are the closest matches" if semantic else "Here are the objects that passed"
+    return {"answer": f"{lead}{scope}: {summary}.", "crops": crops[:60]}
 
 
 # --- out-of-scope agent --------------------------------------------------------------
@@ -386,12 +394,15 @@ def _build():
     return g.compile()
 
 
-def ask(question: str) -> dict[str, Any]:
-    """Run the agent graph and return the answer + SQL/rows/intent for transparency."""
+def ask(question: str, query_embedding: list[float] | None = None) -> dict[str, Any]:
+    """Run the agent graph and return the answer + SQL/rows/crops/intent for transparency."""
     global _graph
     if _graph is None:
         _graph = _build()
-    final = _graph.invoke({"question": question, "attempts": 0})
+    state: dict[str, Any] = {"question": question, "attempts": 0}
+    if query_embedding:
+        state["query_embedding"] = query_embedding
+    final = _graph.invoke(state)
     return {
         "answer": final.get("answer", ""),
         "intent": final.get("intent"),

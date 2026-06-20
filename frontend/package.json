@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@nivo/bar": "^0.88.0",
     "@nivo/core": "^0.88.0",
     "@nivo/line": "^0.88.0",

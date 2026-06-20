@@ -209,6 +209,13 @@ def get_objects(source_id: int | None = None, class_label: str | None = None) ->
     ]
 
 
+@router.post("/client-sessions/{source_id}/embeddings", response_model=schemas.CropEmbeddingsResult)
+def set_embeddings(source_id: int, body: schemas.CropEmbeddingsIn) -> schemas.CropEmbeddingsResult:
+    """Attach client-computed CLIP embeddings to crops (out-of-band) for semantic search."""
+    updated = store.set_crop_embeddings(source_id, [i.model_dump() for i in body.items])
+    return schemas.CropEmbeddingsResult(updated=updated)
+
+
 # --- Chatbot: LangGraph multi-agent text-to-SQL over the detections DB ----------------
 @router.post("/chat", response_model=schemas.ChatOut)
 def chat(body: schemas.ChatIn) -> schemas.ChatOut:
@@ -221,6 +228,6 @@ def chat(body: schemas.ChatIn) -> schemas.ChatOut:
     if not body.question.strip():
         raise HTTPException(status_code=422, detail="Ask a question about the detections.")
     try:
-        return schemas.ChatOut(**chat_graph.ask(body.question.strip()))
+        return schemas.ChatOut(**chat_graph.ask(body.question.strip(), query_embedding=body.query_embedding))
     except Exception as exc:  # pragma: no cover - LLM/runtime errors
         raise HTTPException(status_code=500, detail=f"chat failed: {str(exc)[:200]}") from exc

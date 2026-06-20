@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { embedText } from "../webgpu/clip";
+
+// Visual / descriptive queries → compute a CLIP text embedding for semantic search.
+const VISUAL_RE = /\b(show|see|find|look|looks|picture|photo|image|thumbnail|gallery|wearing|holding|colou?r|red|blue|green|yellow|orange|purple|pink|black|white|grey|gray|brown|dark|light)\b/i;
 
 const SUGGESTIONS = [
   "What's been detected?",
@@ -42,7 +46,10 @@ export default function Chat() {
     setMessages((m) => [...m, { role: "user", text: question }]);
     setBusy(true);
     try {
-      const res = await api.chat(question);
+      // For visual queries, embed the text with CLIP (client-side) so the gallery agent can do
+      // semantic similarity search. Best-effort: null on failure → falls back to class matching.
+      const qvec = VISUAL_RE.test(question) ? await embedText(question) : null;
+      const res = await api.chat(question, qvec);
       setMessages((m) => [...m, {
         role: "bot", text: res.answer, sql: res.sql, rows: res.rows, intent: res.intent,
         crops: res.crops,

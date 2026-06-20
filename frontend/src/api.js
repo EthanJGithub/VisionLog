@@ -37,11 +37,20 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
     }),
-  chat: (question) =>
+  // CLIP embeddings for crops, sent out-of-band (one batch) — never blocks detection logging.
+  setEmbeddings: (sourceId, items) =>
+    req(`/client-sessions/${sourceId}/embeddings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    }),
+  chat: (question, queryEmbedding = null) =>
     req("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify(
+        queryEmbedding ? { question, query_embedding: queryEmbedding } : { question }
+      ),
     }),
 };
 

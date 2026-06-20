@@ -3,6 +3,8 @@ import { api } from "../api";
 import { createDetector } from "../webgpu/detector";
 import { SimpleTracker } from "../webgpu/tracker";
 import { attachThumbs } from "../webgpu/thumbs";
+import { warmClip } from "../webgpu/clip";
+import { createEmbedder } from "../webgpu/embedQueue";
 import { CLIENT_MODELS } from "../models";
 import BoxOverlay from "./BoxOverlay";
 import ClassFilter from "./ClassFilter";
@@ -25,6 +27,7 @@ export default function LiveWebcam({ onLogged }) {
   const enabledRef = useRef(null); // Set of enabled class labels (open-vocab), or null = all
   const trackerRef = useRef(null); // assigns stable Object IDs across frames
   const thumbedRef = useRef(new Set()); // track_ids already thumbnailed (one crop per object)
+  const embedderRef = useRef(null);     // background CLIP embedder (semantic search)
 
   const INPUT_SIZE = 640; // models are exported at a fixed 640 for peak WebGPU throughput
   const [modelId, setModelId] = useState(CLIENT_MODELS[0].id);
@@ -115,6 +118,8 @@ export default function LiveWebcam({ onLogged }) {
       frameNoRef.current = 0;
       pendingRef.current = [];
       thumbedRef.current = new Set();
+      embedderRef.current = createEmbedder(() => sourceIdRef.current, () => runningRef.current);
+      warmClip();
       setLogged(0);
 
       runningRef.current = true;
@@ -147,6 +152,9 @@ export default function LiveWebcam({ onLogged }) {
           : all;
         const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
         attachThumbs(tracked, video, thumbedRef.current, detectorRef.current); // crop (+seg cutout) per object
+        for (const t of tracked) {
+          if (t.thumb && t.track_id != null) embedderRef.current?.enqueue(t.track_id, t.thumb);
+        }
         setDets(tracked);
         const now = performance.now();
         const inst = 1000 / Math.max(1, now - t0);

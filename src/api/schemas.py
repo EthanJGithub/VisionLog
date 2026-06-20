@@ -86,6 +86,9 @@ class ClientLogResult(BaseModel):
 # --- Chatbot (LangGraph + Groq text-to-SQL over the detections DB) -------------------
 class ChatIn(BaseModel):
     question: str
+    # optional CLIP text embedding of the question (computed client-side) — enables semantic
+    # visual search in the gallery agent without running CLIP on the server.
+    query_embedding: list[float] | None = None
 
 
 class ObjectCropOut(BaseModel):
@@ -94,6 +97,21 @@ class ObjectCropOut(BaseModel):
     class_label: str
     confidence: float
     thumb: str
+    similarity: float | None = None  # set by semantic search (cosine), else None
+    caption: str | None = None       # set by the Groq-vision caption agent, else None
+
+
+class CropEmbeddingItem(BaseModel):
+    track_id: int
+    embedding: list[float]
+
+
+class CropEmbeddingsIn(BaseModel):
+    items: list[CropEmbeddingItem]
+
+
+class CropEmbeddingsResult(BaseModel):
+    updated: int
 
 
 class ChatOut(BaseModel):

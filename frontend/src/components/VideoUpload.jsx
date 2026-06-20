@@ -4,6 +4,8 @@ import { MODELS, isClientModel } from "../models";
 import { createDetector } from "../webgpu/detector";
 import { SimpleTracker } from "../webgpu/tracker";
 import { attachThumbs } from "../webgpu/thumbs";
+import { warmClip } from "../webgpu/clip";
+import { createEmbedder } from "../webgpu/embedQueue";
 import BoxOverlay from "./BoxOverlay";
 import ClassFilter from "./ClassFilter";
 
@@ -29,6 +31,7 @@ export default function VideoUpload({ onLogged }) {
   const trackerRef = useRef(null); // stable Object IDs across frames
   const fileRef = useRef(null);    // the chosen File (kept until the user clicks Start)
   const thumbedRef = useRef(new Set()); // track_ids already thumbnailed (one crop per object)
+  const embedderRef = useRef(null);     // background CLIP embedder (semantic search)
 
   const [vocab, setVocab] = useState(null);
   const [enabled, setEnabled] = useState(new Set());
@@ -194,6 +197,8 @@ export default function VideoUpload({ onLogged }) {
       frameNoRef.current = 0;
       pendingRef.current = [];
       thumbedRef.current = new Set();
+      embedderRef.current = createEmbedder(() => sourceIdRef.current, () => runningRef.current);
+      warmClip(); // load CLIP in the background so crop embeddings are ready
       runningRef.current = true;
       loggingRef.current = true;
       setRunning(true);
@@ -234,6 +239,9 @@ export default function VideoUpload({ onLogged }) {
           : all;
         const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
         attachThumbs(tracked, v, thumbedRef.current, detectorRef.current); // crop (+seg cutout) per object
+        for (const t of tracked) {
+          if (t.thumb && t.track_id != null) embedderRef.current?.enqueue(t.track_id, t.thumb);
+        }
         setLiveDets(tracked);
         const inst = 1000 / Math.max(1, performance.now() - t0);
         setFps((p) => (p ? p * 0.8 + inst * 0.2 : inst));

@@ -79,7 +79,11 @@ class ObjectCrop(Base):
     track_id = Column(Integer, nullable=False, index=True)
     class_label = Column(String(64), nullable=False, index=True)
     confidence = Column(Float, nullable=False)
-    thumb = Column(Text, nullable=False)               # small JPEG data URL (~3KB)
+    thumb = Column(Text, nullable=False)               # small JPEG/PNG data URL (~3-30KB)
+    # CLIP image embedding (JSON array of floats), set asynchronously by the client. Stored as
+    # portable JSON + ranked by cosine in Python — same code path on SQLite (tests) and Postgres,
+    # no extension. pgvector is the drop-in scale path if crop volume ever grows large.
+    embedding = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     __table_args__ = (UniqueConstraint("source_id", "track_id", name="uq_crop_source_track"),)
@@ -273,6 +277,13 @@ def upsert_object_crop(
         session.commit()
 
 
+def _crop_dict(r: "ObjectCrop") -> dict[str, Any]:
+    return {
+        "source_id": r.source_id, "track_id": r.track_id, "class_label": r.class_label,
+        "confidence": r.confidence, "thumb": r.thumb,
+    }
+
+
 def get_object_crops(
     engine=None, source_id: int | None = None, class_label: str | None = None, limit: int = 60
 ) -> list[dict[str, Any]]:
@@ -283,14 +294,59 @@ def get_object_crops(
             stmt = stmt.where(ObjectCrop.source_id == source_id)
         if class_label is not None:
             stmt = stmt.where(func.lower(ObjectCrop.class_label) == class_label.lower())
-        rows = session.scalars(stmt.limit(limit)).all()
-        return [
-            {
-                "source_id": r.source_id, "track_id": r.track_id, "class_label": r.class_label,
-                "confidence": r.confidence, "thumb": r.thumb,
-            }
-            for r in rows
-        ]
+        return [_crop_dict(r) for r in session.scalars(stmt.limit(limit)).all()]
+
+
+def set_crop_embeddings(source_id: int, items: list[dict[str, Any]], *, engine=None) -> int:
+    """Attach CLIP embeddings to crops by track_id (computed client-side, sent out-of-band so it
+    never blocks the detection loop). items: [{track_id, embedding: [float,...]}]. Returns count."""
+    import json as _json
+    n = 0
+    with Session(engine or get_engine()) as session:
+        for it in items:
+            crop = session.scalar(
+                select(ObjectCrop).where(
+                    ObjectCrop.source_id == source_id, ObjectCrop.track_id == it["track_id"]
+                )
+            )
+            if crop is not None and it.get("embedding"):
+                crop.embedding = _json.dumps([round(float(x), 6) for x in it["embedding"]])
+                n += 1
+        session.commit()
+    return n
+
+
+def search_object_crops(
+    query_vec: list[float], *, engine=None, class_label: str | None = None, limit: int = 30
+) -> list[dict[str, Any]]:
+    """Semantic search: cosine similarity between the query embedding and stored crop embeddings
+    (normalized vectors → dot product). Crops without embeddings are skipped. Python-side ranking
+    is fine at this scale; pgvector would be the drop-in for large volumes."""
+    import json as _json
+    import math
+    qn = math.sqrt(sum(x * x for x in query_vec)) or 1.0
+    q = [x / qn for x in query_vec]
+    with Session(engine or get_engine()) as session:
+        stmt = select(ObjectCrop).where(ObjectCrop.embedding.isnot(None))
+        if class_label is not None:
+            stmt = stmt.where(func.lower(ObjectCrop.class_label) == class_label.lower())
+        scored: list[tuple[float, ObjectCrop]] = []
+        for r in session.scalars(stmt).all():
+            try:
+                v = _json.loads(r.embedding)
+            except Exception:
+                continue
+            if len(v) != len(q):
+                continue
+            vn = math.sqrt(sum(x * x for x in v)) or 1.0
+            scored.append((sum(a * b for a, b in zip(q, v)) / vn, r))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        out = []
+        for sim, r in scored[:limit]:
+            d = _crop_dict(r)
+            d["similarity"] = round(sim, 4)
+            out.append(d)
+        return out
 
 
 def delete_source(source_id: int, engine=None) -> bool:

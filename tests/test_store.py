@@ -56,6 +56,28 @@ def test_object_crops_upsert_keeps_best(engine):
     assert [c["track_id"] for c in store.get_object_crops(engine=engine, class_label="PERSON")] == [2]
 
 
+def test_crop_embeddings_and_semantic_search(engine):
+    sid = store.create_source("upload", model_version="m", conf_threshold=0.4, engine=engine)
+    for tid, lbl in [(1, "car"), (2, "person"), (3, "cat")]:
+        store.upsert_object_crop(sid, tid, lbl, 0.9, f"data:image/png;base64,{lbl}", engine=engine)
+    # orthogonal-ish unit embeddings so cosine ranking is unambiguous
+    store.set_crop_embeddings(sid, [
+        {"track_id": 1, "embedding": [1.0, 0.0, 0.0]},
+        {"track_id": 2, "embedding": [0.0, 1.0, 0.0]},
+        {"track_id": 3, "embedding": [0.9, 0.1, 0.0]},  # closest to the [1,0,0] query after car
+    ], engine=engine)
+
+    hits = store.search_object_crops([1.0, 0.0, 0.0], engine=engine)
+    assert [h["track_id"] for h in hits[:2]] == [1, 3]      # car, then the near-car cat
+    assert hits[0]["similarity"] >= hits[1]["similarity"]
+    # class-scoped search
+    cats = store.search_object_crops([1.0, 0.0, 0.0], engine=engine, class_label="cat")
+    assert [h["track_id"] for h in cats] == [3]
+    # crops without embeddings are skipped
+    store.upsert_object_crop(sid, 9, "bus", 0.9, "data:image/png;base64,bus", engine=engine)
+    assert 9 not in {h["track_id"] for h in store.search_object_crops([1.0, 0.0, 0.0], engine=engine)}
+
+
 def test_add_detections_and_counts(engine):
     sid = store.create_source(
         "upload", model_version="m", conf_threshold=0.3, engine=engine

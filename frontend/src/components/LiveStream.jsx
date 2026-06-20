@@ -3,6 +3,8 @@ import { api } from "../api";
 import { createDetector } from "../webgpu/detector";
 import { SimpleTracker } from "../webgpu/tracker";
 import { attachThumbs } from "../webgpu/thumbs";
+import { warmClip } from "../webgpu/clip";
+import { createEmbedder } from "../webgpu/embedQueue";
 import { CLIENT_MODELS } from "../models";
 import BoxOverlay from "./BoxOverlay";
 import ClassFilter from "./ClassFilter";
@@ -24,6 +26,7 @@ export default function LiveStream({ onLogged }) {
   const detectorRef = useRef(null);
   const trackerRef = useRef(null);
   const thumbedRef = useRef(new Set()); // track_ids already thumbnailed (one crop per object)
+  const embedderRef = useRef(null);     // background CLIP embedder (semantic search)
   const runningRef = useRef(false);
   const busyRef = useRef(false);        // one inference at a time; drop frames to stay live
   const sourceIdRef = useRef(null);
@@ -110,6 +113,8 @@ export default function LiveStream({ onLogged }) {
       frameNoRef.current = 0;
       pendingRef.current = [];
       thumbedRef.current = new Set();
+      embedderRef.current = createEmbedder(() => sourceIdRef.current, () => runningRef.current);
+      warmClip();
       setLogged(0);
 
       const ws = new WebSocket(toWs(bridgeUrl));
@@ -150,6 +155,9 @@ export default function LiveStream({ onLogged }) {
         : all;
       const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
       if (canvas) attachThumbs(tracked, canvas, thumbedRef.current, detectorRef.current); // crop (+seg cutout)
+      for (const t of tracked) {
+        if (t.thumb && t.track_id != null) embedderRef.current?.enqueue(t.track_id, t.thumb);
+      }
       setDets(tracked);
       const now = performance.now();
       const inst = 1000 / Math.max(1, now - t0);

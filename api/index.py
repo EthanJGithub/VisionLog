@@ -66,7 +66,7 @@ def chat(body: schemas.ChatIn) -> schemas.ChatOut:
         raise HTTPException(status_code=422, detail="Ask a question about the detections.")
     _ensure_db()
     try:
-        return schemas.ChatOut(**chat_graph.ask(body.question.strip()))
+        return schemas.ChatOut(**chat_graph.ask(body.question.strip(), query_embedding=body.query_embedding))
     except Exception as exc:  # pragma: no cover - LLM/runtime errors
         raise HTTPException(status_code=500, detail=f"chat failed: {str(exc)[:200]}") from exc
 
@@ -110,6 +110,17 @@ def get_objects(source_id: int | None = None, class_label: str | None = None) ->
         schemas.ObjectCropOut(**c)
         for c in store.get_object_crops(source_id=source_id, class_label=class_label)
     ]
+
+
+@app.post(
+    "/api/v1/client-sessions/{source_id}/embeddings", response_model=schemas.CropEmbeddingsResult
+)
+def set_embeddings(source_id: int, body: schemas.CropEmbeddingsIn) -> schemas.CropEmbeddingsResult:
+    # CLIP image embeddings, computed client-side and sent out-of-band (so they never block the
+    # detection loop), attached to crops by track_id for semantic search.
+    _ensure_db()
+    updated = store.set_crop_embeddings(source_id, [i.model_dump() for i in body.items])
+    return schemas.CropEmbeddingsResult(updated=updated)
 
 
 @app.get("/api/v1/sources", response_model=list[schemas.SourceOut])
