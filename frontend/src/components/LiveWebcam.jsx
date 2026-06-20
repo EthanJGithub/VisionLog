@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { createDetector } from "../webgpu/detector";
 import { SimpleTracker } from "../webgpu/tracker";
+import { attachThumbs } from "../webgpu/thumbs";
 import { CLIENT_MODELS } from "../models";
 import BoxOverlay from "./BoxOverlay";
 import ClassFilter from "./ClassFilter";
@@ -23,6 +24,7 @@ export default function LiveWebcam({ onLogged }) {
   const frameNoRef = useRef(0);
   const enabledRef = useRef(null); // Set of enabled class labels (open-vocab), or null = all
   const trackerRef = useRef(null); // assigns stable Object IDs across frames
+  const thumbedRef = useRef(new Set()); // track_ids already thumbnailed (one crop per object)
 
   const INPUT_SIZE = 640; // models are exported at a fixed 640 for peak WebGPU throughput
   const [modelId, setModelId] = useState(CLIENT_MODELS[0].id);
@@ -112,6 +114,7 @@ export default function LiveWebcam({ onLogged }) {
       sourceIdRef.current = session.id;
       frameNoRef.current = 0;
       pendingRef.current = [];
+      thumbedRef.current = new Set();
       setLogged(0);
 
       runningRef.current = true;
@@ -143,6 +146,7 @@ export default function LiveWebcam({ onLogged }) {
           ? all.filter((x) => enabledRef.current.has(x.class_label))
           : all;
         const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
+        attachThumbs(tracked, video, thumbedRef.current); // one crop per object → gallery
         setDets(tracked);
         const now = performance.now();
         const inst = 1000 / Math.max(1, now - t0);

@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import (
-    Column, DateTime, Float, ForeignKey, Integer, String, create_engine, func, select,
+    Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint,
+    create_engine, func, select,
 )
 from sqlalchemy.orm import DeclarativeBase, Session, relationship
 from sqlalchemy.pool import StaticPool
@@ -64,6 +65,24 @@ class DetectionRow(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     source = relationship("Source", back_populates="detections")
+
+
+class ObjectCrop(Base):
+    """One representative thumbnail per tracked object (source_id, track_id) — the best
+    (highest-confidence) crop seen — for the chatbot's visual gallery / recall."""
+    __tablename__ = "object_crops"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_id = Column(
+        Integer, ForeignKey("sources.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    track_id = Column(Integer, nullable=False, index=True)
+    class_label = Column(String(64), nullable=False, index=True)
+    confidence = Column(Float, nullable=False)
+    thumb = Column(Text, nullable=False)               # small JPEG data URL (~3KB)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (UniqueConstraint("source_id", "track_id", name="uq_crop_source_track"),)
 
 
 _engine = None
@@ -231,6 +250,49 @@ def totals(engine=None, source_id: int | None = None) -> dict[str, int]:
         }
 
 
+def upsert_object_crop(
+    source_id: int, track_id: int, class_label: str, confidence: float, thumb: str, *, engine=None
+) -> None:
+    """Store one representative thumbnail per (source_id, track_id), keeping the highest-confidence
+    crop seen for that object."""
+    with Session(engine or get_engine()) as session:
+        existing = session.scalar(
+            select(ObjectCrop).where(
+                ObjectCrop.source_id == source_id, ObjectCrop.track_id == track_id
+            )
+        )
+        if existing is None:
+            session.add(ObjectCrop(
+                source_id=source_id, track_id=track_id, class_label=class_label,
+                confidence=confidence, thumb=thumb,
+            ))
+        elif confidence > existing.confidence:
+            existing.class_label = class_label
+            existing.confidence = confidence
+            existing.thumb = thumb
+        session.commit()
+
+
+def get_object_crops(
+    engine=None, source_id: int | None = None, class_label: str | None = None, limit: int = 60
+) -> list[dict[str, Any]]:
+    """Recent object thumbnails for the gallery / chatbot visual recall."""
+    with Session(engine or get_engine()) as session:
+        stmt = select(ObjectCrop).order_by(ObjectCrop.confidence.desc())
+        if source_id is not None:
+            stmt = stmt.where(ObjectCrop.source_id == source_id)
+        if class_label is not None:
+            stmt = stmt.where(func.lower(ObjectCrop.class_label) == class_label.lower())
+        rows = session.scalars(stmt.limit(limit)).all()
+        return [
+            {
+                "source_id": r.source_id, "track_id": r.track_id, "class_label": r.class_label,
+                "confidence": r.confidence, "thumb": r.thumb,
+            }
+            for r in rows
+        ]
+
+
 def delete_source(source_id: int, engine=None) -> bool:
     """Delete one run and its detections (cascade). Returns False if it didn't exist."""
     with Session(engine or get_engine()) as session:
@@ -245,7 +307,8 @@ def delete_source(source_id: int, engine=None) -> bool:
 def clear_all(engine=None) -> dict[str, int]:
     """Delete ALL runs + detections (user-initiated reset). Returns counts removed."""
     with Session(engine or get_engine()) as session:
-        dets = session.query(DetectionRow).delete()  # children first (FK)
+        session.query(ObjectCrop).delete()           # children first (FK)
+        dets = session.query(DetectionRow).delete()
         srcs = session.query(Source).delete()
         session.commit()
         return {"sources": srcs, "detections": dets}

@@ -18,6 +18,9 @@ from src.agent.schema import UnsafeSQLError, sanitize_sql
     ("tell me about the footage", "overview"),
     ("What can I ask about this data?", "schema"),
     ("what classes do you track?", "schema"),
+    ("show me the trucks", "gallery"),
+    ("what did the cats look like", "gallery"),
+    ("show me a picture of the cats", "gallery"),
     ("random vague question", "overview"),  # safe default
 ])
 def test_keyword_intent_router(q, intent):

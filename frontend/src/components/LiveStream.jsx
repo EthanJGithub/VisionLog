@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { createDetector } from "../webgpu/detector";
 import { SimpleTracker } from "../webgpu/tracker";
+import { attachThumbs } from "../webgpu/thumbs";
 import { CLIENT_MODELS } from "../models";
 import BoxOverlay from "./BoxOverlay";
 import ClassFilter from "./ClassFilter";
@@ -22,6 +23,7 @@ export default function LiveStream({ onLogged }) {
   const wsRef = useRef(null);
   const detectorRef = useRef(null);
   const trackerRef = useRef(null);
+  const thumbedRef = useRef(new Set()); // track_ids already thumbnailed (one crop per object)
   const runningRef = useRef(false);
   const busyRef = useRef(false);        // one inference at a time; drop frames to stay live
   const sourceIdRef = useRef(null);
@@ -107,6 +109,7 @@ export default function LiveStream({ onLogged }) {
       sourceIdRef.current = session.id;
       frameNoRef.current = 0;
       pendingRef.current = [];
+      thumbedRef.current = new Set();
       setLogged(0);
 
       const ws = new WebSocket(toWs(bridgeUrl));
@@ -146,6 +149,7 @@ export default function LiveStream({ onLogged }) {
         ? all.filter((x) => enabledRef.current.has(x.class_label))
         : all;
       const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
+      if (canvas) attachThumbs(tracked, canvas, thumbedRef.current); // one crop per object → gallery
       setDets(tracked);
       const now = performance.now();
       const inst = 1000 / Math.max(1, now - t0);

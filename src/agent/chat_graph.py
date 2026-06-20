@@ -32,7 +32,7 @@ from src.agent.schema import SCHEMA_DESCRIPTION, UnsafeSQLError, sanitize_sql
 
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_ATTEMPTS = 3
-INTENTS = ("analytics", "overview", "schema", "out_of_scope")
+INTENTS = ("analytics", "overview", "schema", "gallery", "out_of_scope")
 
 # Pre-defined, audited aggregate queries for the overview agent (no LLM SQL authoring → robust).
 OVERVIEW_QUERIES: dict[str, str] = {
@@ -69,6 +69,7 @@ class ChatState(TypedDict, total=False):
     sql: str
     safe_sql: str
     rows: list[dict[str, Any]]
+    crops: list[dict[str, Any]]
     error: str | None
     attempts: int
     answer: str
@@ -115,6 +116,11 @@ def _keyword_intent(question: str) -> str:
     )):
         return "schema"
     if any(w in q for w in (
+        "show me", "show the", "show all", "let me see", "see the", "picture", "image",
+        "thumbnail", "gallery", "look like", "looked like", "what did", "visual", "snapshot",
+    )):
+        return "gallery"
+    if any(w in q for w in (
         "how many", "count", "average", "avg", "most", "top", "highest", "lowest", "per ",
         "by class", "total number", "which source", "which run",
     )):
@@ -140,6 +146,8 @@ def classify_intent(state: ChatState) -> ChatState:
         "(e.g. 'what has been detected', 'give me an overview').\n"
         "- schema: a meta question about what the data contains or what can be asked "
         "(columns, classes, capabilities, help).\n"
+        "- gallery: the user wants to SEE the objects — images, pictures, thumbnails, or what "
+        "something looked like (e.g. 'show me the trucks', 'what did the people look like').\n"
         "- out_of_scope: not about the detection data at all.\n"
         "Reply with ONLY the label."
     ))
@@ -271,6 +279,32 @@ def schema_help(state: ChatState) -> ChatState:
     return {"answer": _llm().invoke([sys, human]).content, "rows": classes}
 
 
+# --- gallery agent (visual recall — returns object thumbnails) -----------------------
+def gallery(state: ChatState) -> ChatState:
+    from collections import Counter
+
+    crops = store.get_object_crops(limit=200)
+    if not crops:
+        return {"answer": (
+            "No object snapshots have been captured yet — run a detection (upload/webcam/stream) "
+            "first, then I can show you the objects that passed."
+        ), "crops": []}
+
+    q = state["question"].lower()
+    labels = {c["class_label"].lower() for c in crops}
+    wanted = next((lbl for lbl in sorted(labels, key=len, reverse=True) if lbl in q), None)
+    if wanted:
+        crops = [c for c in crops if c["class_label"].lower() == wanted]
+
+    counts = Counter(c["class_label"] for c in crops)
+    summary = ", ".join(f"{n} {lbl}" for lbl, n in counts.most_common())
+    scope = f" matching '{wanted}'" if wanted else ""
+    return {
+        "answer": f"Here are the objects that passed{scope}: {summary}.",
+        "crops": crops[:60],
+    }
+
+
 # --- out-of-scope agent --------------------------------------------------------------
 def out_of_scope(state: ChatState) -> ChatState:
     return {
@@ -309,6 +343,7 @@ def _build():
     g.add_node("answer", answer)
     g.add_node("overview", overview)
     g.add_node("schema_help", schema_help)
+    g.add_node("gallery", gallery)
     g.add_node("out_of_scope", out_of_scope)
 
     g.set_entry_point("classify_intent")
@@ -316,6 +351,7 @@ def _build():
         "analytics": "author_sql",
         "overview": "overview",
         "schema": "schema_help",
+        "gallery": "gallery",
         "out_of_scope": "out_of_scope",
     })
     g.add_edge("author_sql", "guard")
@@ -323,7 +359,7 @@ def _build():
                             {"execute": "execute", "retry": "author_sql", "answer": "answer"})
     g.add_conditional_edges("execute", _after_execute,
                             {"answer": "answer", "retry": "author_sql"})
-    for terminal in ("answer", "overview", "schema_help", "out_of_scope"):
+    for terminal in ("answer", "overview", "schema_help", "gallery", "out_of_scope"):
         g.add_edge(terminal, END)
     return g.compile()
 
@@ -339,6 +375,7 @@ def ask(question: str) -> dict[str, Any]:
         "intent": final.get("intent"),
         "sql": final.get("safe_sql") or final.get("sql"),
         "rows": (final.get("rows") or [])[:50],
+        "crops": (final.get("crops") or [])[:60],
         "attempts": final.get("attempts", 0),
         "error": final.get("error"),
     }

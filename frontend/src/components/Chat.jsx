@@ -37,6 +37,7 @@ export default function Chat() {
       const res = await api.chat(question);
       setMessages((m) => [...m, {
         role: "bot", text: res.answer, sql: res.sql, rows: res.rows, intent: res.intent,
+        crops: res.crops,
       }]);
     } catch (err) {
       setMessages((m) => [...m, { role: "bot", text: null, error: err.message }]);
@@ -75,6 +76,16 @@ export default function Chat() {
                   <span className="intent-badge">{INTENT_LABELS[m.intent] || m.intent}</span>
                 )}
                 <p>{m.text}</p>
+                {m.crops?.length > 0 && (
+                  <div className="crop-grid">
+                    {m.crops.map((c, j) => (
+                      <figure key={j} className="crop" title={`${c.class_label} ${Math.round((c.confidence || 0) * 100)}%`}>
+                        <img src={c.thumb} alt={c.class_label} loading="lazy" />
+                        <figcaption>{c.class_label}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                )}
                 {m.sql && (
                   <details>
                     <summary>SQL</summary>

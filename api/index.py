@@ -95,7 +95,21 @@ def log_client_detections(source_id: int, body: schemas.ClientLogIn) -> schemas.
     for frame in body.items:
         dets = [d.model_dump() for d in frame.detections]
         logged += store.add_detections(source_id, frame.frame_number, frame.ts_seconds, dets)
+        for d in dets:  # a thumb is sent once per new confirmed track → store the object crop
+            if d.get("thumb") and d.get("track_id") is not None:
+                store.upsert_object_crop(
+                    source_id, d["track_id"], d["class_label"], d["confidence"], d["thumb"]
+                )
     return schemas.ClientLogResult(logged=logged)
+
+
+@app.get("/api/v1/objects", response_model=list[schemas.ObjectCropOut])
+def get_objects(source_id: int | None = None, class_label: str | None = None) -> list[schemas.ObjectCropOut]:
+    _ensure_db()
+    return [
+        schemas.ObjectCropOut(**c)
+        for c in store.get_object_crops(source_id=source_id, class_label=class_label)
+    ]
 
 
 @app.get("/api/v1/sources", response_model=list[schemas.SourceOut])

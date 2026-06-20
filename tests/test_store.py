@@ -41,6 +41,21 @@ def test_create_source_records_audit_fields(engine):
     assert rows[0]["conf_threshold"] == 0.35
 
 
+def test_object_crops_upsert_keeps_best(engine):
+    sid = store.create_source("upload", model_version="m", conf_threshold=0.4, engine=engine)
+    store.upsert_object_crop(sid, 1, "car", 0.70, "data:image/jpeg;base64,AAA", engine=engine)
+    store.upsert_object_crop(sid, 1, "car", 0.90, "data:image/jpeg;base64,BBB", engine=engine)  # higher
+    store.upsert_object_crop(sid, 1, "car", 0.50, "data:image/jpeg;base64,CCC", engine=engine)  # lower, ignored
+    store.upsert_object_crop(sid, 2, "person", 0.80, "data:image/jpeg;base64,DDD", engine=engine)
+
+    crops = store.get_object_crops(engine=engine)
+    assert len(crops) == 2  # one per (source, track)
+    car = next(c for c in crops if c["track_id"] == 1)
+    assert car["confidence"] == 0.90 and car["thumb"].endswith("BBB")  # kept the best
+    assert {c["class_label"] for c in crops} == {"car", "person"}
+    assert [c["track_id"] for c in store.get_object_crops(engine=engine, class_label="PERSON")] == [2]
+
+
 def test_add_detections_and_counts(engine):
     sid = store.create_source(
         "upload", model_version="m", conf_threshold=0.3, engine=engine

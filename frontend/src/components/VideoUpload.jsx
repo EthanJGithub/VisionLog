@@ -3,6 +3,7 @@ import { api } from "../api";
 import { MODELS, isClientModel } from "../models";
 import { createDetector } from "../webgpu/detector";
 import { SimpleTracker } from "../webgpu/tracker";
+import { attachThumbs } from "../webgpu/thumbs";
 import BoxOverlay from "./BoxOverlay";
 import ClassFilter from "./ClassFilter";
 
@@ -27,6 +28,7 @@ export default function VideoUpload({ onLogged }) {
   const enabledRef = useRef(null); // open-vocab class filter (Set), or null = all
   const trackerRef = useRef(null); // stable Object IDs across frames
   const fileRef = useRef(null);    // the chosen File (kept until the user clicks Start)
+  const thumbedRef = useRef(new Set()); // track_ids already thumbnailed (one crop per object)
 
   const [vocab, setVocab] = useState(null);
   const [enabled, setEnabled] = useState(new Set());
@@ -191,6 +193,7 @@ export default function VideoUpload({ onLogged }) {
       sourceIdRef.current = session.id;
       frameNoRef.current = 0;
       pendingRef.current = [];
+      thumbedRef.current = new Set();
       runningRef.current = true;
       loggingRef.current = true;
       setRunning(true);
@@ -230,6 +233,7 @@ export default function VideoUpload({ onLogged }) {
           ? all.filter((x) => enabledRef.current.has(x.class_label))
           : all;
         const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
+        attachThumbs(tracked, v, thumbedRef.current); // one crop per object → gallery
         setLiveDets(tracked);
         const inst = 1000 / Math.max(1, performance.now() - t0);
         setFps((p) => (p ? p * 0.8 + inst * 0.2 : inst));
@@ -345,9 +349,12 @@ export default function VideoUpload({ onLogged }) {
         </p>
       )}
       {clientSide && selected.sizeMB >= 80 && (
-        <p className="error" style={{ marginTop: 4 }}>
-          ⬇ One-time ~{selected.sizeMB}MB download to your browser (cached after). Runs on
-          your GPU — needs a reasonably strong one ({selected.id === "yolo26x" ? "~10" : "~20"} fps).
+        <p className="muted" style={{ marginTop: 4 }}>
+          ⬇ First run downloads ~{selected.sizeMB}MB (cached after), then <strong>compiles the
+          model onto your GPU</strong> — this warm-up takes a while
+          {selected.id === "yolo26x" ? " (notably longer for x)" : ""} before the first frame.
+          After that it runs ~{selected.id === "yolo26x" ? "10" : "20"} fps; needs a reasonably
+          strong GPU{selected.id === "yolo26x" ? " with enough memory" : ""}.
         </p>
       )}
       {isOpenVocab && !clientSide && (

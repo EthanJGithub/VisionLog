@@ -13,6 +13,7 @@ class DetectionCore(BaseModel):
     bbox_y: float
     bbox_w: float
     bbox_h: float
+    thumb: str | None = None  # optional small JPEG data URL, sent once per new confirmed track
 
 
 class DetectionOut(DetectionCore):
@@ -87,10 +88,19 @@ class ChatIn(BaseModel):
     question: str
 
 
+class ObjectCropOut(BaseModel):
+    source_id: int
+    track_id: int
+    class_label: str
+    confidence: float
+    thumb: str
+
+
 class ChatOut(BaseModel):
     answer: str
-    intent: str | None = None  # which agent handled it (analytics/overview/schema/out_of_scope)
+    intent: str | None = None  # which agent handled it (analytics/overview/schema/gallery/...)
     sql: str | None = None
     rows: list[dict] = []
+    crops: list[ObjectCropOut] = []  # visual recall: object thumbnails for the gallery agent
     attempts: int = 0
     error: str | None = None
