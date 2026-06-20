@@ -3,7 +3,9 @@
 .cache
 *.log
 **/__pycache__
-models/
+# Exclude ONLY the repo-root server-side ONNX scratch dir — anchored with a leading slash so
+# it does NOT also strip frontend/public/models/ (the client models the static build serves).
+/models/
 data/*.db
 data/*.db-*
 tests/fixtures/*.mp4
