@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from src import store  # noqa: E402  (light: SQLAlchemy only)
+from src.agent import chat_graph  # noqa: E402  (torch-free: langgraph/langchain-groq only)
 from src.api import schemas  # noqa: E402  (light: pydantic only)
 
 app = FastAPI(title="VisionLog logging API", version="1.0.0")
@@ -45,17 +46,29 @@ def health() -> schemas.HealthOut:
         max_duration_seconds=0,
         server_models={},
         open_vocab_available=False,
-        chat_available=False,  # chatbot needs the full container backend (langgraph/groq)
+        # Chatbot is torch-free (LangGraph + Groq), so it runs on this Vercel function when a
+        # GROQ_API_KEY is set; otherwise chat_graph.available() is False and /chat returns 503.
+        chat_available=chat_graph.available(),
     )
 
 
-@app.post("/api/v1/chat")
-def chat_unavailable(body: dict | None = None):
-    raise HTTPException(
-        status_code=503,
-        detail="The chatbot runs on the full container backend (LangGraph + Groq), not this "
-        "static/logging deployment.",
-    )
+@app.post("/api/v1/chat", response_model=schemas.ChatOut)
+def chat(body: schemas.ChatIn) -> schemas.ChatOut:
+    # LangGraph multi-agent text-to-SQL over the detections DB (mirrors src/api/routes.py).
+    # No silent fallback: without GROQ_API_KEY (+ deps) we surface a clear 503.
+    if not chat_graph.available():
+        raise HTTPException(
+            status_code=503,
+            detail="Chatbot needs langgraph/langchain-groq and a GROQ_API_KEY. "
+            "Set GROQ_API_KEY in the Vercel env to enable it.",
+        )
+    if not body.question.strip():
+        raise HTTPException(status_code=422, detail="Ask a question about the detections.")
+    _ensure_db()
+    try:
+        return schemas.ChatOut(**chat_graph.ask(body.question.strip()))
+    except Exception as exc:  # pragma: no cover - LLM/runtime errors
+        raise HTTPException(status_code=500, detail=f"chat failed: {str(exc)[:200]}") from exc
 
 
 @app.post("/api/v1/client-sessions", response_model=schemas.SourceOut)

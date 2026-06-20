@@ -4,11 +4,16 @@
 //    but they all run on your own GPU — measured on an NVIDIA card: n≈48, m≈20, x≈11 fps.
 //  • Open-vocabulary (YOLOE) is the only server-side feature: it needs a ~570MB CLIP text
 //    encoder to turn typed prompts into vectors, which is impractical to ship to a browser.
+//
+// MODELS_BASE: where the .onnx/.json model files are served from. Defaults to the app's own
+// `/models` (local dev). On Vercel, set VITE_MODELS_BASE to the Hugging Face Hub CDN resolve
+// URL so the big weights stream from HF's CDN instead of the app host (no LFS, host-agnostic).
+const MODELS_BASE = (import.meta.env.VITE_MODELS_BASE || "/models").replace(/\/$/, "");
 export const MODELS = [
   {
     id: "yolo26n",
     label: "YOLO26n — fastest",
-    url: "/models/yolo26n.onnx",
+    url: `${MODELS_BASE}/yolo26n.onnx`,
     sizeMB: 9.5,
     runtimes: ["client"],
     family: "yolo26",
@@ -17,7 +22,7 @@ export const MODELS = [
   {
     id: "yolo26s",
     label: "YOLO26s — balanced",
-    url: "/models/yolo26s.onnx",
+    url: `${MODELS_BASE}/yolo26s.onnx`,
     sizeMB: 37,
     runtimes: ["client"],
     family: "yolo26",
@@ -26,7 +31,7 @@ export const MODELS = [
   {
     id: "yolo26m",
     label: "YOLO26m — accurate",
-    url: "/models/yolo26m.onnx",
+    url: `${MODELS_BASE}/yolo26m.onnx`,
     sizeMB: 82,
     runtimes: ["client"],
     family: "yolo26",
@@ -35,7 +40,7 @@ export const MODELS = [
   {
     id: "yolo26x",
     label: "YOLO26x — most accurate",
-    url: "/models/yolo26x.onnx",
+    url: `${MODELS_BASE}/yolo26x.onnx`,
     sizeMB: 223,
     runtimes: ["client"],
     family: "yolo26",
@@ -44,8 +49,8 @@ export const MODELS = [
   {
     id: "yolo26-ppe",
     label: "YOLO26n-PPE — fine-tuned (your GPU)",
-    url: "/models/yolo26-ppe.onnx",
-    vocabUrl: "/models/yolo26-ppe.json",
+    url: `${MODELS_BASE}/yolo26-ppe.onnx`,
+    vocabUrl: `${MODELS_BASE}/yolo26-ppe.json`,
     sizeMB: 9.5,
     runtimes: ["client"],
     family: "yolo26-ft",
@@ -54,8 +59,8 @@ export const MODELS = [
   {
     id: "yoloe26-vocab",
     label: "YOLOE-26 — open-vocabulary (your GPU)",
-    url: "/models/yoloe26-vocab.onnx",
-    vocabUrl: "/models/yoloe26-vocab.json",
+    url: `${MODELS_BASE}/yoloe26-vocab.onnx`,
+    vocabUrl: `${MODELS_BASE}/yoloe26-vocab.json`,
     sizeMB: 41,
     runtimes: ["client"],
     family: "yoloe",
