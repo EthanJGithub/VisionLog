@@ -1,0 +1,8 @@
+{
+  "name": "visionlog",
+  "private": true,
+  "description": "Root build shim for Vercel: @vercel/static-build runs vercel-build so the frontend/dist output mounts at the deployment ROOT (not under /frontend). Real frontend lives in frontend/.",
+  "scripts": {
+    "vercel-build": "cd frontend && npm install && npm run build"
+  }
+}
