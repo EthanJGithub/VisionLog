@@ -40,3 +40,6 @@ runs/
 
 # Lighthouse reports
 lh*.json
+
+# Session handoff — kept local, never committed (per user)
+SESSION_STATE.md
