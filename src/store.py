@@ -111,7 +111,25 @@ def get_engine(database_url: str | None = None):
 
 
 def init_db(database_url: str | None = None) -> None:
-    Base.metadata.create_all(get_engine(database_url))
+    eng = get_engine(database_url)
+    Base.metadata.create_all(eng)
+    _ensure_columns(eng)
+
+
+def _ensure_columns(eng) -> None:
+    """Tiny idempotent migration: create_all() won't add NEW columns to an EXISTING table, so
+    add object_crops.embedding / .caption if they're missing (Postgres + SQLite both support
+    ALTER TABLE ADD COLUMN). Keeps the deployed DB in sync without Alembic."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(eng)
+    if "object_crops" not in insp.get_table_names():
+        return
+    existing = {c["name"] for c in insp.get_columns("object_crops")}
+    for col in ("embedding", "caption"):
+        if col not in existing:
+            with eng.begin() as conn:
+                conn.execute(text(f"ALTER TABLE object_crops ADD COLUMN {col} TEXT"))
 
 
 # --- write paths ---------------------------------------------------------------------
