@@ -233,7 +233,7 @@ export default function VideoUpload({ onLogged }) {
           ? all.filter((x) => enabledRef.current.has(x.class_label))
           : all;
         const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
-        attachThumbs(tracked, v, thumbedRef.current); // one crop per object → gallery
+        attachThumbs(tracked, v, thumbedRef.current, detectorRef.current); // crop (+seg cutout) per object
         setLiveDets(tracked);
         const inst = 1000 / Math.max(1, performance.now() - t0);
         setFps((p) => (p ? p * 0.8 + inst * 0.2 : inst));

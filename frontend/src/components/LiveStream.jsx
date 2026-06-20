@@ -149,7 +149,7 @@ export default function LiveStream({ onLogged }) {
         ? all.filter((x) => enabledRef.current.has(x.class_label))
         : all;
       const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
-      if (canvas) attachThumbs(tracked, canvas, thumbedRef.current); // one crop per object → gallery
+      if (canvas) attachThumbs(tracked, canvas, thumbedRef.current, detectorRef.current); // crop (+seg cutout)
       setDets(tracked);
       const now = performance.now();
       const inst = 1000 / Math.max(1, now - t0);

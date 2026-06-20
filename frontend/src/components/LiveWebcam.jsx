@@ -146,7 +146,7 @@ export default function LiveWebcam({ onLogged }) {
           ? all.filter((x) => enabledRef.current.has(x.class_label))
           : all;
         const tracked = trackerRef.current ? trackerRef.current.update(filtered) : filtered;
-        attachThumbs(tracked, video, thumbedRef.current); // one crop per object → gallery
+        attachThumbs(tracked, video, thumbedRef.current, detectorRef.current); // crop (+seg cutout) per object
         setDets(tracked);
         const now = performance.now();
         const inst = 1000 / Math.max(1, now - t0);
