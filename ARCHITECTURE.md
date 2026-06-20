@@ -40,7 +40,8 @@ and known limitations. Claims are grounded in the code and in measured numbers.
 ```
                          ┌──────────────────────── Browser (Vite/React/Nivo) ───────────────────────┐
                          │                                                                            │
-  Webcam (client-side):  │  getUserMedia → ClientDetector (onnxruntime-web, WebGPU/WASM)             │
+  Webcam (client-side):  │  getUserMedia ─┐                                                          │
+  Live stream (UDP):     │  WebSocket ◀ bridge worker (ffmpeg) ─┼─▶ ClientDetector (onnxruntime-web, WebGPU/WASM) │
                          │      frontend/src/webgpu/detector.js  → boxes drawn live (real-time)      │
                          │      sampled detections (~1/sec) ──POST /client-sessions/{id}/detections──┐
                          │                                                                           │ │
@@ -83,10 +84,13 @@ which server models are present and whether open-vocab is available — no silen
 
 To keep the SQL data "mostly correct", logged detections are not raw per-frame boxes:
 
-- **Object IDs (tracking).** A lightweight client-side tracker
-  ([frontend/src/webgpu/tracker.js](frontend/src/webgpu/tracker.js)) — greedy IoU,
-  class-aware association — assigns a **stable `track_id`** to each physical object across
-  frames. Persisted as the `detections.track_id` column (the "Object ID").
+- **Object IDs (tracking).** A lightweight client-side **SORT-style** tracker
+  ([frontend/src/webgpu/tracker.js](frontend/src/webgpu/tracker.js)) — class-aware, with a
+  constant-velocity motion model: each track is predicted forward by its velocity and matched on
+  the *predicted* box (IoU), with a center-distance/size fallback for fast or briefly-occluded
+  objects. This assigns a **stable `track_id`** to each physical object across frames (pure
+  frame-to-frame IoU re-IDed anything moving faster than ~its own width/frame). Persisted as the
+  `detections.track_id` column (the "Object ID").
 - **Confirmation gating.** A track must be seen in ≥ `minHits` (default 3) frames before any
   of its detections are logged — this drops single-frame false-positive flicker.
 - **Adjustable confidence.** A UI slider (default **0.40**) sets the detection threshold live
@@ -109,15 +113,23 @@ frame, timestamp). `totals.objects` = distinct tracked objects.
 
 ## 5. Deployment
 
-- **Full app (free):** single Docker image ([Dockerfile](Dockerfile)) builds the Vite
-  bundle and serves API + SPA + the client `/models/*.onnx` on `:7860` for
-  **Hugging Face Spaces (free CPU)**. The webcam path needs no server compute (runs on the
-  visitor's GPU); the server only handles uploads + logging. DB = **Neon free Postgres**
-  via `DATABASE_URL`.
-- **Client-only demo (free):** because the webcam path is pure static assets, the frontend
-  can also be deployed to any static host (Vercel/Pages); logging just needs the API reachable.
-- **Open-vocab:** requires the "full" image (`requirements-full.txt`) — not part of the free
-  lean deploy.
+**Live: https://vision-log-lilac.vercel.app** (Vercel, GitHub-connected, auto-deploys on push).
+
+- **App = Vercel** ([vercel.json](vercel.json)): `@vercel/static-build` serves the Vite SPA +
+  client `/models/*.onnx` at the root; `@vercel/python` runs the FastAPI logging + chatbot
+  function ([api/index.py](api/index.py)). All detection runs on the visitor's GPU, so the
+  function is torch-free and tiny (`excludeFiles: frontend/**`). DB = **Neon free Postgres**
+  via `DATABASE_URL` (auto-pinned to the psycopg v3 driver in [src/config.py](src/config.py)).
+- **Chatbot** runs on the same function, gated on `GROQ_API_KEY` (LangGraph + Groq, no torch).
+- **`x` (223 MB)** exceeds GitHub's 100 MB limit → not bundled; missing `/models/*` returns a
+  real 404 and the UI says "not deployed". To enable it, host it on a CDN (e.g. HF Hub) and set
+  `VITE_MODELS_BASE`.
+- **Live-stream bridge (optional, always-on):** [bridge/](bridge/) — an ffmpeg→WebSocket worker
+  that relays a UDP/RTP/RTSP stream to the browser; **not** serverless (Vercel can't hold a
+  socket), so it deploys separately (Fly.io/Render). Detection still runs client-side; set the
+  bridge URL in the **Live stream (UDP)** tab. See [bridge/README.md](bridge/README.md).
+- **Open-vocab (arbitrary prompts):** requires the "full" image (`requirements-full.txt`) — not
+  part of the Vercel deploy.
 
 ---
 
@@ -134,6 +146,8 @@ frame, timestamp). `totals.objects` = distinct tracked objects.
   that takes embeddings as a runtime input (standard export bakes classes in). Both are
   multi-step with real uncertainty. An optional server path for arbitrary prompts exists
   (`src/detect/openvocab.py`), off by default.
-- **Tracking** (object IDs across frames, e.g. ByteTrack → counting) not implemented.
+- **Tracking** is a SORT-style motion tracker (constant-velocity + IoU/center association), not
+  a full appearance-model tracker (e.g. ByteTrack/Re-ID) — IDs can still switch under heavy
+  mutual occlusion of same-class objects. Tracking-based analytics (counting/zones) are roadmap.
 - **FP16 client models** (smaller download, faster) — pending a proper `half=True` export
   (a naive post-hoc float16 convert breaks on the model's `Resize` ops).

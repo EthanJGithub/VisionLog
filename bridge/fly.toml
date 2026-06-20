@@ -1,0 +1,28 @@
+# Fly.io config for the VisionLog stream bridge (always-on worker).
+# Deploy:  fly launch --no-deploy   (creates the app)  then  fly deploy
+# Set the real source:  fly secrets set STREAM_SOURCE="-i udp://@:1234"
+app = "visionlog-bridge"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  STREAM_FPS = "12"
+  STREAM_WIDTH = "960"
+  PORT = "8000"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Keep one instance warm so the ffmpeg reader and WebSocket stay up.
+  auto_stop_machines = false
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# For a raw UDP source you must also expose a UDP port, e.g.:
+#   fly ips allocate-v4
+# and add a [[services]] block with protocol = "udp" on the stream port.

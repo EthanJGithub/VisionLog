@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { api } from "./api";
 import VideoUpload from "./components/VideoUpload";
 import LiveWebcam from "./components/LiveWebcam";
+import LiveStream from "./components/LiveStream";
 import SourceFeed from "./components/SourceFeed";
 import SystemHealth from "./components/SystemHealth";
 // Code-split the heavier / Nivo-using parts out of the initial bundle.
@@ -77,6 +78,9 @@ export default function App() {
         <button className={mode === "webcam" ? "tab tab-on" : "tab"} onClick={() => setMode("webcam")}>
           Live webcam (your GPU)
         </button>
+        <button className={mode === "stream" ? "tab tab-on" : "tab"} onClick={() => setMode("stream")}>
+          Live stream (UDP)
+        </button>
         <button className={mode === "benchmarks" ? "tab tab-on" : "tab"} onClick={() => setMode("benchmarks")}>
           Benchmarks
         </button>
@@ -98,8 +102,10 @@ export default function App() {
           <div className="col">
             {mode === "upload" ? (
               <VideoUpload onLogged={refresh} />
-            ) : (
+            ) : mode === "webcam" ? (
               <LiveWebcam onLogged={refresh} />
+            ) : (
+              <LiveStream onLogged={refresh} />
             )}
             <SourceFeed
               sources={sources}
