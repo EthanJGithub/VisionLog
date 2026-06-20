@@ -280,6 +280,29 @@ def schema_help(state: ChatState) -> ChatState:
 
 
 # --- gallery agent (visual recall — returns object thumbnails) -----------------------
+_CLASS_SYNONYMS = {"people": "person", "persons": "person", "ppl": "person", "guy": "person",
+                   "guys": "person", "folks": "person"}
+
+
+def _wanted_class(question: str, labels: set[str]) -> str | None:
+    """Find which detected class the user means — handling multi-word labels, simple plurals
+    ('cars'→'car', 'buses'→'bus') and synonyms ('people'→'person')."""
+    q = question.lower()
+    # direct substring (covers multi-word labels like "hard hat", "license plate")
+    direct = next((lbl for lbl in sorted(labels, key=len, reverse=True) if lbl in q), None)
+    if direct:
+        return direct
+    import re
+    forms: set[str] = set()
+    for t in re.findall(r"[a-z]+", q):
+        forms.add(_CLASS_SYNONYMS.get(t, t))
+        if t.endswith("es"):
+            forms.add(t[:-2])
+        if t.endswith("s"):
+            forms.add(t[:-1])
+    return next((lbl for lbl in labels if lbl in forms), None)
+
+
 def gallery(state: ChatState) -> ChatState:
     from collections import Counter
 
@@ -290,9 +313,8 @@ def gallery(state: ChatState) -> ChatState:
             "first, then I can show you the objects that passed."
         ), "crops": []}
 
-    q = state["question"].lower()
     labels = {c["class_label"].lower() for c in crops}
-    wanted = next((lbl for lbl in sorted(labels, key=len, reverse=True) if lbl in q), None)
+    wanted = _wanted_class(state["question"], labels)
     if wanted:
         crops = [c for c in crops if c["class_label"].lower() == wanted]
 

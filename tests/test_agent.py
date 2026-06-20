@@ -38,6 +38,19 @@ def test_normalize_intent(raw, expected):
     assert chat_graph._normalize_intent(raw) == expected
 
 
+@pytest.mark.parametrize("q,expected", [
+    ("show me the people", "person"),          # synonym
+    ("show me the cars", "car"),               # simple plural
+    ("show me the buses", "bus"),              # -es plural
+    ("show me a picture of the cat", "cat"),   # singular substring
+    ("show me the hard hats", "hard hat"),     # multi-word + plural
+    ("show me everything", None),              # no class named
+])
+def test_gallery_wanted_class(q, expected):
+    labels = {"person", "car", "bus", "cat", "hard hat"}
+    assert chat_graph._wanted_class(q, labels) == expected
+
+
 def test_overview_queries_pass_the_guard(engine):
     # The overview agent runs PRE-DEFINED queries (not LLM-authored); they must all be guard-safe
     # SELECTs and execute on the schema.
