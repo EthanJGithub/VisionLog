@@ -1,15 +1,23 @@
-"""LangGraph multi-agent text-to-SQL chatbot over the detections database.
+"""LangGraph multi-agent chatbot over the detections database.
 
-Graph (each node = an agent role), with a validation + self-correction loop:
+An intent router classifies each question and dispatches to a specialized agent — so vague or
+meta questions don't get a brittle single text-to-SQL guess:
 
-    author_sql ──► guard ──►(ok)──► execute ──►(ok)──► answer ──► END
-        ▲            │(unsafe)          │(db error)
-        └────────────┴──────────────────┘   (retry up to MAX_ATTEMPTS with the error)
+    classify_intent ─┬─ analytics ──► author_sql ─► guard ─► execute ─► answer ─► END
+                     │                    ▲___________│(unsafe)____│(db error)   (self-correct,
+                     │                                                            up to MAX_ATTEMPTS)
+                     ├─ overview  ──► run PRE-DEFINED safe aggregates → synthesize ─► END
+                     ├─ schema    ──► describe what's queryable + distinct classes ─► END
+                     └─ out_of_scope ► polite decline ─────────────────────────────► END
 
-Mirrors the CredAgent pattern (deterministic, auditable LangGraph state transitions). LLM is
-Groq via langchain-groq. Read-only: the guard (src/agent/schema.py) permits only single SELECT
-statements, so the agent can never mutate the DB. No silent fallback: if GROQ_API_KEY is unset
-the API returns 503 rather than degrading.
+Design notes (mirrors the CredAgent pattern: deterministic, auditable LangGraph transitions):
+- LLM is Groq via langchain-groq. The router has a keyword fallback so a flaky/odd LLM reply
+  still routes sensibly. No silent fallback for availability: if GROQ_API_KEY is unset the API
+  returns 503.
+- Read-only: every query (authored OR pre-defined) passes the guard in src/agent/schema.py, so
+  the agent can never mutate the DB. The overview agent uses fixed, audited queries (not
+  LLM-authored), which is why "what's been detected" is robust.
+- Empty-DB aware: instead of an unhelpful "no matching data", it tells the user to log some first.
 """
 from __future__ import annotations
 
@@ -24,6 +32,24 @@ from src.agent.schema import SCHEMA_DESCRIPTION, UnsafeSQLError, sanitize_sql
 
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_ATTEMPTS = 3
+INTENTS = ("analytics", "overview", "schema", "out_of_scope")
+
+# Pre-defined, audited aggregate queries for the overview agent (no LLM SQL authoring → robust).
+OVERVIEW_QUERIES: dict[str, str] = {
+    "runs": "SELECT COUNT(*) AS n FROM sources",
+    "detections_total": "SELECT COUNT(*) AS n FROM detections",
+    "objects_total": "SELECT COUNT(*) AS n FROM (SELECT DISTINCT source_id, track_id FROM detections) t",
+    "by_class": (
+        "SELECT class_label, COUNT(*) AS objects FROM "
+        "(SELECT DISTINCT source_id, track_id, class_label FROM detections) t "
+        "GROUP BY class_label ORDER BY objects DESC LIMIT 10"
+    ),
+}
+
+_EMPTY_DB_MSG = (
+    "No detections have been logged yet — upload a video or run the live webcam/stream first, "
+    "then ask me again."
+)
 
 
 def available() -> bool:
@@ -39,6 +65,7 @@ def available() -> bool:
 
 class ChatState(TypedDict, total=False):
     question: str
+    intent: str
     sql: str
     safe_sql: str
     rows: list[dict[str, Any]]
@@ -53,7 +80,82 @@ def _llm():
     return ChatGroq(model=GROQ_MODEL, temperature=0, api_key=os.environ["GROQ_API_KEY"])
 
 
-# --- agent nodes ---------------------------------------------------------------------
+def _json_safe(v: Any) -> Any:
+    return v if isinstance(v, (int, float, str, type(None))) else str(v)
+
+
+def _run_sql(sql: str) -> list[dict[str, Any]]:
+    """Execute a guarded SELECT and return rows as dicts."""
+    with store.get_engine().connect() as conn:
+        result = conn.execute(text(sql))
+        cols = list(result.keys())
+        return [dict(zip(cols, (_json_safe(v) for v in r))) for r in result.fetchall()]
+
+
+def _detections_count() -> int | None:
+    try:
+        return _run_sql(sanitize_sql("SELECT COUNT(*) AS n FROM detections"))[0]["n"]
+    except Exception:
+        return None
+
+
+# --- intent routing ------------------------------------------------------------------
+def _normalize_intent(raw: str) -> str | None:
+    r = (raw or "").strip().lower()
+    return next((i for i in INTENTS if i in r), None)
+
+
+def _keyword_intent(question: str) -> str:
+    """Deterministic fallback router (used if the LLM is unavailable or replies oddly)."""
+    q = question.lower()
+    if any(w in q for w in (
+        "what can you", "what can i", "can i ask", "what questions", "what data", "what column",
+        "what field", "what class", "which class", "help", "schema", "what do you know",
+        "what kind of question", "how do i ask",
+    )):
+        return "schema"
+    if any(w in q for w in (
+        "how many", "count", "average", "avg", "most", "top", "highest", "lowest", "per ",
+        "by class", "total number", "which source", "which run",
+    )):
+        return "analytics"
+    if any(w in q for w in (
+        "overview", "summary", "summarize", "what's been", "what has been", "what's getting",
+        "what is getting", "tell me about", "what's happening", "describe", "anything interesting",
+        "what did you", "what have you",
+    )):
+        return "overview"
+    return "overview"  # vague questions get a robust overview, not a brittle SQL guess
+
+
+def classify_intent(state: ChatState) -> ChatState:
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    q = state["question"]
+    sys = SystemMessage(content=(
+        "Classify the user's question about an object-detection database into exactly ONE label:\n"
+        "- analytics: a specific quantitative question answerable by a SQL query (counts, "
+        "averages, top-N, filters, per-class or per-run stats).\n"
+        "- overview: a broad/vague question asking what's in the data or for a summary "
+        "(e.g. 'what has been detected', 'give me an overview').\n"
+        "- schema: a meta question about what the data contains or what can be asked "
+        "(columns, classes, capabilities, help).\n"
+        "- out_of_scope: not about the detection data at all.\n"
+        "Reply with ONLY the label."
+    ))
+    intent = None
+    try:
+        intent = _normalize_intent(_llm().invoke([sys, HumanMessage(content=q)]).content)
+    except Exception:
+        intent = None
+    return {"intent": intent or _keyword_intent(q)}
+
+
+def _route_intent(state: ChatState) -> str:
+    return state.get("intent") or "overview"
+
+
+# --- analytics agent (self-correcting text-to-SQL) -----------------------------------
 def author_sql(state: ChatState) -> ChatState:
     from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -84,11 +186,7 @@ def guard(state: ChatState) -> ChatState:
 
 def execute(state: ChatState) -> ChatState:
     try:
-        with store.get_engine().connect() as conn:
-            result = conn.execute(text(state["safe_sql"]))
-            cols = list(result.keys())
-            rows = [dict(zip(cols, (_json_safe(v) for v in r))) for r in result.fetchall()]
-        return {"rows": rows, "error": None}
+        return {"rows": _run_sql(state["safe_sql"]), "error": None}
     except Exception as exc:  # surface DB error to the author for self-correction
         return {"error": f"execution error: {str(exc)[:200]}"}
 
@@ -96,13 +194,15 @@ def execute(state: ChatState) -> ChatState:
 def answer(state: ChatState) -> ChatState:
     from langchain_core.messages import HumanMessage, SystemMessage
 
-    if state.get("error") and state.get("rows") is None:
+    if state.get("error") and not state.get("rows"):
         return {"answer": f"I couldn't answer that reliably ({state['error']})."}
     rows = state.get("rows", [])
+    if not rows and _detections_count() == 0:
+        return {"answer": _EMPTY_DB_MSG}
     sys = SystemMessage(content=(
-        "Answer the user's question about object-detection data conversationally and "
-        "accurately, using ONLY the SQL result rows provided. Be concise. If the rows are "
-        "empty, say no matching data was found. Do not invent numbers."
+        "Answer the user's question about object-detection data conversationally and accurately, "
+        "using ONLY the SQL result rows provided. Be concise. If the rows are empty, say no "
+        "matching data was found for that specific question. Do not invent numbers."
     ))
     human = HumanMessage(content=(
         f"Question: {state['question']}\nSQL: {state.get('safe_sql','')}\n"
@@ -111,11 +211,78 @@ def answer(state: ChatState) -> ChatState:
     return {"answer": _llm().invoke([sys, human]).content}
 
 
-def _json_safe(v: Any) -> Any:
-    return v if isinstance(v, (int, float, str, type(None))) else str(v)
+# --- overview agent (pre-defined aggregates → synthesis) -----------------------------
+def overview(state: ChatState) -> ChatState:
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    facts: dict[str, Any] = {}
+    used: list[str] = []
+    try:
+        for key, sql in OVERVIEW_QUERIES.items():
+            safe = sanitize_sql(sql)
+            used.append(safe)
+            facts[key] = _run_sql(safe)
+    except Exception as exc:
+        return {"answer": f"I couldn't read the data ({str(exc)[:150]}).", "error": str(exc)}
+
+    total = (facts.get("detections_total") or [{}])[0].get("n", 0)
+    if not total:
+        return {"answer": _EMPTY_DB_MSG, "sql": "; ".join(used), "rows": []}
+
+    sys = SystemMessage(content=(
+        "You summarize object-detection data for a user. Using ONLY the provided facts, give a "
+        "short, friendly overview: number of runs, total objects and detections, and the most "
+        "common classes with their counts. Do not invent numbers."
+    ))
+    human = HumanMessage(content=(
+        f"Question: {state['question']}\nFacts (JSON): {json.dumps(facts, default=str)}"
+    ))
+    return {
+        "answer": _llm().invoke([sys, human]).content,
+        "sql": "; ".join(used),
+        "rows": facts.get("by_class", []),
+    }
 
 
-# --- routing -------------------------------------------------------------------------
+# --- schema/help agent ---------------------------------------------------------------
+def schema_help(state: ChatState) -> ChatState:
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    try:
+        classes = _run_sql(
+            sanitize_sql("SELECT DISTINCT class_label FROM detections ORDER BY class_label LIMIT 100")
+        )
+    except Exception:
+        classes = []
+    labels = [c["class_label"] for c in classes]
+    sys = SystemMessage(content=(
+        "You explain what an object-detection database holds and what the user can ask. Be "
+        "concise and concrete. They can ask for: counts of detections, unique object (track) "
+        "counts, top/most-common classes, per-class or per-run breakdowns, and average "
+        "confidence. Use ONLY the provided class list for examples."
+    ))
+    human = HumanMessage(content=(
+        f"Question: {state['question']}\n"
+        f"Tracked classes so far: {labels or '(none logged yet)'}\n"
+        "Tables: sources (one row per run: kind, filename, fps, model_version, conf_threshold, "
+        "created_at) and detections (track_id, class_label, confidence, bbox, frame_number, "
+        "ts_seconds, source_id)."
+    ))
+    return {"answer": _llm().invoke([sys, human]).content, "rows": classes}
+
+
+# --- out-of-scope agent --------------------------------------------------------------
+def out_of_scope(state: ChatState) -> ChatState:
+    return {
+        "answer": (
+            "I can only answer questions about the object-detection data logged here — e.g. which "
+            "classes were detected, how many of each, per-run or per-class stats, and confidence. "
+            'Try: "what\'s been detected?" or "how many cars?"'
+        )
+    }
+
+
+# --- routing helpers (analytics self-correction) -------------------------------------
 def _after_guard(state: ChatState) -> str:
     if state.get("error"):
         return "retry" if state.get("attempts", 0) < MAX_ATTEMPTS else "answer"
@@ -135,26 +302,41 @@ def _build():
     from langgraph.graph import END, StateGraph
 
     g = StateGraph(ChatState)
+    g.add_node("classify_intent", classify_intent)
     g.add_node("author_sql", author_sql)
     g.add_node("guard", guard)
     g.add_node("execute", execute)
     g.add_node("answer", answer)
-    g.set_entry_point("author_sql")
+    g.add_node("overview", overview)
+    g.add_node("schema_help", schema_help)
+    g.add_node("out_of_scope", out_of_scope)
+
+    g.set_entry_point("classify_intent")
+    g.add_conditional_edges("classify_intent", _route_intent, {
+        "analytics": "author_sql",
+        "overview": "overview",
+        "schema": "schema_help",
+        "out_of_scope": "out_of_scope",
+    })
     g.add_edge("author_sql", "guard")
-    g.add_conditional_edges("guard", _after_guard, {"execute": "execute", "retry": "author_sql", "answer": "answer"})
-    g.add_conditional_edges("execute", _after_execute, {"answer": "answer", "retry": "author_sql"})
-    g.add_edge("answer", END)
+    g.add_conditional_edges("guard", _after_guard,
+                            {"execute": "execute", "retry": "author_sql", "answer": "answer"})
+    g.add_conditional_edges("execute", _after_execute,
+                            {"answer": "answer", "retry": "author_sql"})
+    for terminal in ("answer", "overview", "schema_help", "out_of_scope"):
+        g.add_edge(terminal, END)
     return g.compile()
 
 
 def ask(question: str) -> dict[str, Any]:
-    """Run the agent graph and return the answer + the SQL/rows for transparency."""
+    """Run the agent graph and return the answer + SQL/rows/intent for transparency."""
     global _graph
     if _graph is None:
         _graph = _build()
     final = _graph.invoke({"question": question, "attempts": 0})
     return {
         "answer": final.get("answer", ""),
+        "intent": final.get("intent"),
         "sql": final.get("safe_sql") or final.get("sql"),
         "rows": (final.get("rows") or [])[:50],
         "attempts": final.get("attempts", 0),

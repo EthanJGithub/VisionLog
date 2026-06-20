@@ -89,6 +89,7 @@ class ChatIn(BaseModel):
 
 class ChatOut(BaseModel):
     answer: str
+    intent: str | None = None  # which agent handled it (analytics/overview/schema/out_of_scope)
     sql: str | None = None
     rows: list[dict] = []
     attempts: int = 0

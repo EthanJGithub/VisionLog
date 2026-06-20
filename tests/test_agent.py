@@ -5,7 +5,45 @@ import pytest
 from sqlalchemy import text
 
 from src import store
+from src.agent import chat_graph
 from src.agent.schema import UnsafeSQLError, sanitize_sql
+
+
+@pytest.mark.parametrize("q,intent", [
+    ("How many cars were detected?", "analytics"),
+    ("What is the average confidence per class?", "analytics"),
+    ("Which run has the most detections?", "analytics"),
+    ("What's been detected?", "overview"),
+    ("Give me a summary of the data", "overview"),
+    ("tell me about the footage", "overview"),
+    ("What can I ask about this data?", "schema"),
+    ("what classes do you track?", "schema"),
+    ("random vague question", "overview"),  # safe default
+])
+def test_keyword_intent_router(q, intent):
+    assert chat_graph._keyword_intent(q) == intent
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("analytics", "analytics"),
+    ("Intent: overview", "overview"),
+    ("schema", "schema"),
+    ("out_of_scope", "out_of_scope"),
+    ("gibberish", None),
+])
+def test_normalize_intent(raw, expected):
+    assert chat_graph._normalize_intent(raw) == expected
+
+
+def test_overview_queries_pass_the_guard(engine):
+    # The overview agent runs PRE-DEFINED queries (not LLM-authored); they must all be guard-safe
+    # SELECTs and execute on the schema.
+    store.create_source("upload", model_version="m", conf_threshold=0.4, engine=engine)
+    for sql in chat_graph.OVERVIEW_QUERIES.values():
+        safe = sanitize_sql(sql)
+        assert safe.lower().lstrip().startswith("select")
+        with engine.connect() as conn:
+            conn.execute(text(safe)).fetchall()  # must not raise
 
 
 def test_guard_allows_select_and_adds_limit():

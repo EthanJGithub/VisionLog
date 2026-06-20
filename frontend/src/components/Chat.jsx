@@ -2,11 +2,20 @@ import { useRef, useState } from "react";
 import { api } from "../api";
 
 const SUGGESTIONS = [
+  "What's been detected?",
+  "What can I ask about this data?",
   "How many unique objects were detected in total?",
   "What are the top 5 most common classes?",
   "Which source has the most detections?",
   "What's the average confidence per class?",
 ];
+
+const INTENT_LABELS = {
+  analytics: "analytics",
+  overview: "overview",
+  schema: "schema/help",
+  out_of_scope: "out of scope",
+};
 
 /**
  * Chatbot over the detections database — a LangGraph multi-agent text-to-SQL pipeline
@@ -26,7 +35,9 @@ export default function Chat() {
     setBusy(true);
     try {
       const res = await api.chat(question);
-      setMessages((m) => [...m, { role: "bot", text: res.answer, sql: res.sql, rows: res.rows }]);
+      setMessages((m) => [...m, {
+        role: "bot", text: res.answer, sql: res.sql, rows: res.rows, intent: res.intent,
+      }]);
     } catch (err) {
       setMessages((m) => [...m, { role: "bot", text: null, error: err.message }]);
     } finally {
@@ -39,9 +50,9 @@ export default function Chat() {
     <div className="panel chat">
       <h2>Ask the data</h2>
       <p className="muted">
-        A LangGraph multi-agent text-to-SQL pipeline (author → guard → execute → answer, with
-        self-correction) answers questions about the logged detections. Read-only; the
-        generated SQL is shown for transparency.
+        A LangGraph multi-agent pipeline: an intent router sends each question to a specialized
+        agent — analytics (self-correcting text-to-SQL), data overview, schema/help, or
+        out-of-scope. Read-only; the routed intent + generated SQL are shown for transparency.
       </p>
 
       <div className="chat-log" ref={listRef} aria-live="polite">
@@ -60,6 +71,9 @@ export default function Chat() {
               <p className="error">⚠ {m.error}</p>
             ) : (
               <>
+                {m.intent && (
+                  <span className="intent-badge">{INTENT_LABELS[m.intent] || m.intent}</span>
+                )}
                 <p>{m.text}</p>
                 {m.sql && (
                   <details>
