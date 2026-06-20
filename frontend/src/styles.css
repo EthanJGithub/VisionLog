@@ -98,6 +98,19 @@ input[type="file"] { color: var(--muted); font-size: 13px; }
 .row-sel { background: #102132; }
 .ellipsis { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Upload drop-zone — big, obvious click target (replaces the tiny native widget). */
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 22px 16px; margin-top: 6px; text-align: center;
+  border: 1.5px dashed var(--border); border-radius: 12px; cursor: pointer;
+  background: #0b1322; transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone.dz-over { border-color: var(--accent); background: #0d1730; }
+.dropzone.dz-busy { opacity: 0.55; cursor: progress; }
+.dz-icon { font-size: 22px; color: var(--accent); }
+.dz-main { font-size: 14px; }
+.dz-sub { font-size: 12px; }
+
 /* Scope/reset control bar above the charts. */
 .scope-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .scope-bar label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }

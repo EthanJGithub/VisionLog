@@ -40,6 +40,8 @@ export default function VideoUpload({ onLogged }) {
   const [videoUrl, setVideoUrl] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [fileName, setFileName] = useState(null);
+  const [dragging, setDragging] = useState(false);
 
   // client-side (local GPU) state
   const [backend, setBackend] = useState(null);
@@ -80,9 +82,14 @@ export default function VideoUpload({ onLogged }) {
     enabledRef.current = null;
   }
 
-  async function handleFile(e) {
-    const file = e.target.files?.[0];
+  async function handleFiles(files) {
+    const file = files?.[0];
     if (!file) return;
+    if (!file.type.startsWith("video/")) {
+      setError(`"${file.name}" isn't a video file.`);
+      return;
+    }
+    setFileName(file.name);
     setError(null);
     setServerResult(null);
     setLiveDets([]);
@@ -91,6 +98,12 @@ export default function VideoUpload({ onLogged }) {
     setVideoUrl(url);
     if (clientSide) await runClientSide(url);
     else await runServerSide(file);
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    setDragging(false);
+    if (!busy) handleFiles(e.dataTransfer.files);
   }
 
   // ---- client-side (local GPU) -----------------------------------------------------
@@ -304,8 +317,25 @@ export default function VideoUpload({ onLogged }) {
       )}
       <p className="muted" style={{ marginTop: 8 }}>{selected?.note}</p>
 
-      <input type="file" accept="video/*" onChange={handleFile} disabled={busy}
-        aria-label="Upload a video file for detection" />
+      <label
+        className={`dropzone${dragging ? " dz-over" : ""}${busy ? " dz-busy" : ""}`}
+        onDragOver={(e) => { e.preventDefault(); if (!busy) setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+      >
+        <input
+          type="file" accept="video/*" hidden disabled={busy}
+          onChange={(e) => handleFiles(e.target.files)}
+          aria-label="Upload a video file for detection"
+        />
+        <span className="dz-icon" aria-hidden="true">⬆</span>
+        <span className="dz-main">
+          <strong>Click to choose a video</strong> &nbsp;or drag &amp; drop
+        </span>
+        <span className="muted dz-sub">
+          {fileName ? `Selected: ${fileName}` : "MP4 / WebM / MOV"}
+        </span>
+      </label>
       {busy && <p className="muted">{clientSide ? "Loading model onto your GPU…" : "Analysing on the server (CPU)…"}</p>}
       {error && <p className="error">⚠ {error}</p>}
 
