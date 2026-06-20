@@ -97,12 +97,16 @@ export default function VideoUpload({ onLogged }) {
   async function runClientSide(url) {
     setBusy(true);
     try {
-      // No silent failure: confirm the model file is actually served here first.
+      // No silent failure: confirm the model file is actually served here first. A missing
+      // big model (e.g. x, gitignored) can come back as the SPA's index.html with a 200, which
+      // would otherwise blow up later as "protobuf parsing failed" — so reject HTML too.
       const head = await fetch(selected.url, { method: "HEAD" });
-      if (!head.ok) {
+      const ct = head.headers.get("content-type") || "";
+      if (!head.ok || ct.includes("text/html")) {
         throw new Error(
           `${selected.id} (~${selected.sizeMB}MB) isn't deployed here. It's too large for ` +
-          `GitHub's 100MB limit; it's served on the full deployment. Try n/s/m instead.`
+          `GitHub's 100MB limit, so it isn't bundled with the site. Try n/s/m instead, or ` +
+          `host it on a CDN and set VITE_MODELS_BASE.`
         );
       }
       const { detector, backend: be, classNames } = await createDetector(selected, {
