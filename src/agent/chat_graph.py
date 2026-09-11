@@ -30,10 +30,10 @@ from sqlalchemy import text
 from src import store
 from src.agent.schema import SCHEMA_DESCRIPTION, UnsafeSQLError, sanitize_sql
 
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 # Groq vision model for captioning object crops. Configurable so it survives model-id drift; if
 # the call fails (bad id / unavailable), captioning is skipped gracefully.
-GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.6-27b")
 CAPTION_MAX = 4  # cap vision calls per gallery request; captions persist so it's one-time/object
 MAX_ATTEMPTS = 3
 INTENTS = ("analytics", "overview", "schema", "gallery", "out_of_scope")
@@ -92,7 +92,12 @@ def _caption_crop(thumb: str) -> str | None:
     from langchain_groq import ChatGroq
 
     try:
-        llm = ChatGroq(model=GROQ_VISION_MODEL, temperature=0.2, api_key=os.environ["GROQ_API_KEY"])
+        # Qwen defaults to including <think> text in content. Captions need only
+        # the final description, and a non-thinking request keeps them fast.
+        options = {"reasoning_format": "hidden", "reasoning_effort": "none"} if GROQ_VISION_MODEL.startswith("qwen/") else {}
+        llm = ChatGroq(model=GROQ_VISION_MODEL, temperature=0.2,
+                       api_key=os.environ["GROQ_API_KEY"], max_tokens=256,
+                       **options)
         msg = HumanMessage(content=[
             {"type": "text", "text": (
                 "In 6-12 words, describe this cropped detected object — appearance, colour, and "
