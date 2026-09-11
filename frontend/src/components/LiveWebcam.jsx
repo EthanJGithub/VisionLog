@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { createDetector } from "../webgpu/detector";
-import { SimpleTracker } from "../webgpu/tracker";
+import { AdvancedTracker } from "../webgpu/advancedTracker";
+import TrackingToggle from "./TrackingToggle";
 import { attachThumbs } from "../webgpu/thumbs";
 import { warmClip } from "../webgpu/clip";
 import { createEmbedder } from "../webgpu/embedQueue";
@@ -25,6 +26,8 @@ export default function LiveWebcam({ onLogged }) {
   const pendingRef = useRef([]); // frames awaiting flush to the server
   const frameNoRef = useRef(0);
   const enabledRef = useRef(null); // Set of enabled class labels (open-vocab), or null = all
+  const [trackingEnabled, setTrackingEnabled] = useState(true);
+  const frameRef = useRef(null);
   const trackerRef = useRef(null); // assigns stable Object IDs across frames
   const thumbedRef = useRef(new Set()); // track_ids already thumbnailed (one crop per object)
   const embedderRef = useRef(null);     // background CLIP embedder (semantic search)
@@ -38,7 +41,8 @@ export default function LiveWebcam({ onLogged }) {
 
   function changeConf(v) {
     setConf(v);
-    if (detectorRef.current) detectorRef.current.confThreshold = v; // live, no reload
+    if (detectorRef.current) detectorRef.current.confThreshold = trackerRef.current ? .1 : v;
+    if (trackerRef.current) trackerRef.current.highThreshold = v; // live, no reload
   }
   const [backend, setBackend] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -70,10 +74,10 @@ export default function LiveWebcam({ onLogged }) {
       const model = CLIENT_MODELS.find((m) => m.id === modelId);
       const { detector, backend: be, classNames } = await createDetector(model, {
         inputSize: INPUT_SIZE,
-        conf,
+        conf: trackingEnabled ? .1 : conf,
       });
       detectorRef.current = detector;
-      trackerRef.current = new SimpleTracker();
+      trackerRef.current = trackingEnabled ? new AdvancedTracker({ highThreshold: conf }) : null;
       setBackend(be);
       if (classNames) {
         setVocab(classNames);
@@ -118,8 +122,8 @@ export default function LiveWebcam({ onLogged }) {
       frameNoRef.current = 0;
       pendingRef.current = [];
       thumbedRef.current = new Set();
-      embedderRef.current = createEmbedder(() => sourceIdRef.current, () => runningRef.current);
-      warmClip();
+      embedderRef.current = trackingEnabled ? createEmbedder(() => sourceIdRef.current, () => runningRef.current) : null;
+      if (trackingEnabled) warmClip();
       setLogged(0);
 
       runningRef.current = true;
@@ -143,15 +147,18 @@ export default function LiveWebcam({ onLogged }) {
       requestAnimationFrame(loop);
       return;
     }
+    const captured = frameRef.current || (frameRef.current = document.createElement('canvas'));
+    captured.width = video.videoWidth; captured.height = video.videoHeight;
+    captured.getContext('2d').drawImage(video, 0, 0);
     const t0 = performance.now();
     detector
-      .detect(video, video.videoWidth, video.videoHeight)
+      .detect(captured, captured.width, captured.height)
       .then((all) => {
         const filtered = enabledRef.current
           ? all.filter((x) => enabledRef.current.has(x.class_label))
           : all;
-        const tracked = trackerRef.current ? trackerRef.current.update(filtered, video) : filtered;
-        attachThumbs(tracked, video, thumbedRef.current, detectorRef.current); // crop (+seg cutout) per object
+        const tracked = trackerRef.current ? trackerRef.current.update(filtered, captured) : filtered.map(d => ({ ...d, _confirmed: true }));
+        if (trackerRef.current) attachThumbs(tracked, captured, thumbedRef.current, detectorRef.current); // crop (+seg cutout) per object
         for (const t of tracked) {
           if (t.thumb && t.track_id != null) embedderRef.current?.enqueue(t.track_id, t.thumb);
         }
@@ -217,6 +224,7 @@ export default function LiveWebcam({ onLogged }) {
         detections are sent to the server — your video never leaves your device.
       </p>
 
+      <TrackingToggle enabled={trackingEnabled} onChange={setTrackingEnabled} disabled={loading || running} />
       <div className="controls">
         <label>
           Model{" "}

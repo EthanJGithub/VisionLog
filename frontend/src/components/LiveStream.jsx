@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { createDetector } from "../webgpu/detector";
-import { SimpleTracker } from "../webgpu/tracker";
+import { AdvancedTracker } from "../webgpu/advancedTracker";
+import TrackingToggle from "./TrackingToggle";
 import { attachThumbs } from "../webgpu/thumbs";
 import { warmClip } from "../webgpu/clip";
 import { createEmbedder } from "../webgpu/embedQueue";
@@ -24,6 +25,7 @@ export default function LiveStream({ onLogged }) {
   const canvasRef = useRef(null);
   const wsRef = useRef(null);
   const detectorRef = useRef(null);
+  const [trackingEnabled, setTrackingEnabled] = useState(true);
   const trackerRef = useRef(null);
   const thumbedRef = useRef(new Set()); // track_ids already thumbnailed (one crop per object)
   const embedderRef = useRef(null);     // background CLIP embedder (semantic search)
@@ -54,7 +56,8 @@ export default function LiveStream({ onLogged }) {
 
   function changeConf(v) {
     setConf(v);
-    if (detectorRef.current) detectorRef.current.confThreshold = v;
+    if (detectorRef.current) detectorRef.current.confThreshold = trackerRef.current ? .1 : v;
+    if (trackerRef.current) trackerRef.current.highThreshold = v;
   }
 
   const stop = useCallback(() => {
@@ -89,10 +92,10 @@ export default function LiveStream({ onLogged }) {
       const model = CLIENT_MODELS.find((m) => m.id === modelId);
       const { detector, backend: be, classNames } = await createDetector(model, {
         inputSize: INPUT_SIZE,
-        conf,
+        conf: trackingEnabled ? .1 : conf,
       });
       detectorRef.current = detector;
-      trackerRef.current = new SimpleTracker();
+      trackerRef.current = trackingEnabled ? new AdvancedTracker({ highThreshold: conf }) : null;
       setBackend(be);
       if (classNames) {
         setVocab(classNames);
@@ -113,8 +116,8 @@ export default function LiveStream({ onLogged }) {
       frameNoRef.current = 0;
       pendingRef.current = [];
       thumbedRef.current = new Set();
-      embedderRef.current = createEmbedder(() => sourceIdRef.current, () => runningRef.current);
-      warmClip();
+      embedderRef.current = trackingEnabled ? createEmbedder(() => sourceIdRef.current, () => runningRef.current) : null;
+      if (trackingEnabled) warmClip();
       setLogged(0);
 
       const ws = new WebSocket(toWs(bridgeUrl));
@@ -153,8 +156,8 @@ export default function LiveStream({ onLogged }) {
       const filtered = enabledRef.current
         ? all.filter((x) => enabledRef.current.has(x.class_label))
         : all;
-      const tracked = trackerRef.current ? trackerRef.current.update(filtered, canvas) : filtered;
-      if (canvas) attachThumbs(tracked, canvas, thumbedRef.current, detectorRef.current); // crop (+seg cutout)
+      const tracked = trackerRef.current ? trackerRef.current.update(filtered, canvas) : filtered.map(d => ({ ...d, _confirmed: true }));
+      if (canvas && trackerRef.current) attachThumbs(tracked, canvas, thumbedRef.current, detectorRef.current); // crop (+seg cutout)
       for (const t of tracked) {
         if (t.thumb && t.track_id != null) embedderRef.current?.enqueue(t.track_id, t.thumb);
       }
@@ -211,6 +214,7 @@ export default function LiveStream({ onLogged }) {
         See <code>bridge/README.md</code> to deploy the worker.
       </p>
 
+      <TrackingToggle enabled={trackingEnabled} onChange={setTrackingEnabled} disabled={loading || running} />
       <div className="controls">
         <label style={{ flex: "1 1 320px" }}>
           Bridge URL{" "}

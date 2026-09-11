@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { MODELS, isClientModel } from "../models";
 import { createDetector } from "../webgpu/detector";
-import { SimpleTracker } from "../webgpu/tracker";
+import { AdvancedTracker } from "../webgpu/advancedTracker";
+import TrackingToggle from "./TrackingToggle";
 import { attachThumbs } from "../webgpu/thumbs";
 import { warmClip } from "../webgpu/clip";
 import { createEmbedder } from "../webgpu/embedQueue";
@@ -28,6 +29,8 @@ export default function VideoUpload({ onLogged }) {
   const pendingRef = useRef([]);
   const frameNoRef = useRef(0);
   const enabledRef = useRef(null); // open-vocab class filter (Set), or null = all
+  const [trackingEnabled, setTrackingEnabled] = useState(true);
+  const frameRef = useRef(null);
   const trackerRef = useRef(null); // stable Object IDs across frames
   const fileRef = useRef(null);    // the chosen File (kept until the user clicks Start)
   const thumbedRef = useRef(new Set()); // track_ids already thumbnailed (one crop per object)
@@ -40,7 +43,8 @@ export default function VideoUpload({ onLogged }) {
 
   function changeConf(v) {
     setConf(v);
-    if (detectorRef.current) detectorRef.current.confThreshold = v;
+    if (detectorRef.current) detectorRef.current.confThreshold = trackerRef.current ? .1 : v;
+    if (trackerRef.current) trackerRef.current.highThreshold = v;
   }
   const [prompts, setPrompts] = useState("");
   const [videoUrl, setVideoUrl] = useState(null);
@@ -170,10 +174,10 @@ export default function VideoUpload({ onLogged }) {
       }
       const { detector, backend: be, classNames } = await createDetector(selected, {
         inputSize: INPUT_SIZE,
-        conf,
+        conf: trackingEnabled ? .1 : conf,
       });
       detectorRef.current = detector;
-      trackerRef.current = new SimpleTracker();
+      trackerRef.current = trackingEnabled ? new AdvancedTracker({ highThreshold: conf }) : null;
       setBackend(be);
       if (classNames) {
         setVocab(classNames);
@@ -197,8 +201,8 @@ export default function VideoUpload({ onLogged }) {
       frameNoRef.current = 0;
       pendingRef.current = [];
       thumbedRef.current = new Set();
-      embedderRef.current = createEmbedder(() => sourceIdRef.current, () => runningRef.current);
-      warmClip(); // load CLIP in the background so crop embeddings are ready
+      embedderRef.current = trackingEnabled ? createEmbedder(() => sourceIdRef.current, () => runningRef.current) : null;
+      if (trackingEnabled) warmClip(); // load CLIP in the background so crop embeddings are ready
       runningRef.current = true;
       loggingRef.current = true;
       setRunning(true);
@@ -230,15 +234,18 @@ export default function VideoUpload({ onLogged }) {
       if (runningRef.current) requestAnimationFrame(loop);
       return;
     }
+    const captured = frameRef.current || (frameRef.current = document.createElement('canvas'));
+    captured.width = v.videoWidth; captured.height = v.videoHeight;
+    captured.getContext('2d').drawImage(v, 0, 0);
     const t0 = performance.now();
     detector
-      .detect(v, v.videoWidth, v.videoHeight)
+      .detect(captured, captured.width, captured.height)
       .then((all) => {
         const filtered = enabledRef.current
           ? all.filter((x) => enabledRef.current.has(x.class_label))
           : all;
-        const tracked = trackerRef.current ? trackerRef.current.update(filtered, v) : filtered;
-        attachThumbs(tracked, v, thumbedRef.current, detectorRef.current); // crop (+seg cutout) per object
+        const tracked = trackerRef.current ? trackerRef.current.update(filtered, captured) : filtered.map(d => ({ ...d, _confirmed: true }));
+        if (trackerRef.current) attachThumbs(tracked, captured, thumbedRef.current, detectorRef.current); // crop (+seg cutout) per object
         for (const t of tracked) {
           if (t.thumb && t.track_id != null) embedderRef.current?.enqueue(t.track_id, t.thumb);
         }
@@ -335,6 +342,7 @@ export default function VideoUpload({ onLogged }) {
         confirmed objects are saved for analysis.
       </p>
 
+      <TrackingToggle enabled={trackingEnabled} onChange={setTrackingEnabled} disabled={busy || running} />
       <div className="controls">
         <label>
           Model{" "}
