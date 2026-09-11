@@ -62,24 +62,21 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div>
-          <h1>VisionLog</h1>
-          <p className="tagline">YOLO26 detection on your video → logged to PostgreSQL</p>
-        </div>
-        <div className="health-slot">
-          <SystemHealth health={health} totals={stats?.totals} />
-        </div>
+        <div className="product-brand"><span className="brand-symbol" aria-hidden="true">⌖</span><div><h1>VisionLog</h1><small>Computer vision workspace</small></div></div>
+        <nav className="product-nav" aria-label="Project links"><a href="https://ethanjgithub.github.io/">Portfolio ↗</a><a href="https://github.com/EthanJGithub/VisionLog" target="_blank" rel="noopener">Source code ↗</a></nav>
       </header>
+      <section className="workspace-intro"><div><span className="eyebrow">Observe / detect / understand</span><h2>See more in every frame.</h2><p>Turn video into tracked objects and searchable data. Run detection on your device, then explore what your camera sees.</p></div><div className="health-slot"><SystemHealth health={health} /></div></section>
+      <div className="vision-metrics"><div><strong>{stats?.totals?.objects ?? '—'}</strong><span>Tracked objects</span></div><div><strong>{stats?.totals?.detections?.toLocaleString() ?? '—'}</strong><span>Logged detections</span></div><div><strong>{sources.length}</strong><span>Saved sessions</span></div></div>
 
-      <div className="tabs">
+      <div className="tabs" aria-label="Workspace views">
         <button className={mode === "upload" ? "tab tab-on" : "tab"} onClick={() => setMode("upload")}>
           Upload video
         </button>
         <button className={mode === "webcam" ? "tab tab-on" : "tab"} onClick={() => setMode("webcam")}>
-          Live webcam (your GPU)
+          Live webcam
         </button>
         <button className={mode === "stream" ? "tab tab-on" : "tab"} onClick={() => setMode("stream")}>
-          Live stream (UDP)
+          Live stream
         </button>
         <button className={mode === "benchmarks" ? "tab tab-on" : "tab"} onClick={() => setMode("benchmarks")}>
           Benchmarks

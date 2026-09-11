@@ -1,10 +1,10 @@
 import { ResponsiveBar } from "@nivo/bar";
 
 const theme = {
-  text: { fill: "#cbd5e1" },
-  axis: { ticks: { text: { fill: "#94a3b8" } } },
-  grid: { line: { stroke: "#1e293b" } },
-  tooltip: { container: { background: "#0b1020", color: "#e2e8f0" } },
+  text: { fill: "#ecf1e9" },
+  axis: { ticks: { text: { fill: "#a2b0a5" } } },
+  grid: { line: { stroke: "#2d3b34" } },
+  tooltip: { container: { background: "#17201d", color: "#ecf1e9" } },
 };
 
 export default function ClassCounts({ data, scopeLabel }) {
@@ -24,7 +24,7 @@ export default function ClassCounts({ data, scopeLabel }) {
             indexBy="class_label"
             margin={{ top: 10, right: 20, bottom: 70, left: 50 }}
             padding={0.3}
-            colors={["#22d3ee"]}
+            colors={["#bce8a4"]}
             theme={theme}
             axisBottom={{ tickRotation: -40 }}
             enableLabel={false}

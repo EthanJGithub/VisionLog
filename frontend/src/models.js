@@ -17,7 +17,7 @@ export const MODELS = [
     sizeMB: 9.5,
     runtimes: ["client"],
     family: "yolo26",
-    note: "Nano. Real-time on most GPUs (~48 fps).",
+    note: "Compact model for fast detection. Speed depends on your device.",
   },
   {
     id: "yolo26s",

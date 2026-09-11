@@ -331,8 +331,8 @@ export default function VideoUpload({ onLogged }) {
     <div className="panel">
       <h2>Upload a video</h2>
       <p className="muted">
-        n/s run <strong>in your browser on your GPU</strong> (free, real-time). m/x and
-        open-vocab run on the server. Detections are logged to PostgreSQL.
+        Choose a model and upload a clip. Detection runs in your browser;
+        confirmed objects are saved for analysis.
       </p>
 
       <div className="controls">
@@ -399,6 +399,10 @@ export default function VideoUpload({ onLogged }) {
 
       <label
         className={`dropzone${dragging ? " dz-over" : ""}${busy ? " dz-busy" : ""}`}
+        tabIndex={busy ? -1 : 0}
+        role="button"
+        aria-label="Choose a video for detection"
+        onKeyDown={(e) => { if (!busy && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.querySelector('input').click(); } }}
         onDragOver={(e) => { e.preventDefault(); if (!busy) setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}

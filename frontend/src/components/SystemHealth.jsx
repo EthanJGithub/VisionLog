@@ -1,19 +1,6 @@
-/** Backend health + free-tier limits + totals header. */
-export default function SystemHealth({ health, totals }) {
-  if (!health) return null;
-  const ok = health.model_loaded;
-  return (
-    <div className="health">
-      <span className={`dot ${ok ? "dot-ok" : "dot-bad"}`} />
-      <span>{ok ? "Model loaded" : "Model NOT loaded"}</span>
-      <span className="sep">·</span>
-      <span>{health.model_version}</span>
-      <span className="sep">·</span>
-      <span>{totals?.objects ?? 0} objects · {totals?.detections ?? 0} detections / {totals?.sources ?? 0} sources</span>
-      <span className="sep">·</span>
-      <span className="muted">
-        limits: {health.max_upload_mb}MB / {health.max_duration_seconds}s / {health.sample_fps}fps
-      </span>
-    </div>
-  );
+/** API connectivity; browser models load only after a detection is started. */
+export default function SystemHealth({ health }) {
+  if (!health) return <div className="health"><span className="muted">Connecting to the logging service…</span></div>;
+  const ok = health.status === "ok";
+  return <div className="health"><span className={`dot ${ok ? "dot-ok" : "dot-bad"}`} /><span>{ok ? "Logging service connected" : "Logging service degraded"}</span>{health.max_upload_mb > 0 && <span className="muted"> · uploads up to {health.max_upload_mb} MB</span>}</div>;
 }
