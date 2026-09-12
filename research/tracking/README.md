@@ -1,5 +1,7 @@
 # Tracking quality research
 
+See [the heavier-mode investigation](HEAVY_MODE.md) for YOLO26x/1280, dedicated OSNet person-ReID experiments, observed identity failures, compute limitations and a proposed optional browser mode. [Review evidence](heavy-mode-evidence.json) preserves exact configurations and the critical frame outputs.
+
 The portfolio keeps its verified seven-second browser result until a **continuous 15-second or longer** replacement passes review. These offline experiments are not the deployed browser tracker and are not approved showcase footage.
 
 ## Current comparison
