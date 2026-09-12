@@ -12,7 +12,8 @@ export function drawDetections(ctx, detections, nativeWidth, nativeHeight, width
   const overlaps = (a, b) => a.x < b.x + b.w + 3 && a.x + a.w + 3 > b.x && a.y < b.y + b.h + 3 && a.y + a.h + 3 > b.y;
   // Spatial order keeps label placement stable when confidence ranking changes.
   for (const d of [...detections].sort((a, b) => a.bbox_x - b.bbox_x)) {
-    const color = COLORS[((d.class_id % COLORS.length) + COLORS.length) % COLORS.length];
+    const colorIndex = d.track_id != null ? d.track_id - 1 : d.class_id;
+    const color = COLORS[((colorIndex % COLORS.length) + COLORS.length) % COLORS.length];
     const x = Math.max(1, d.bbox_x * sx), y = Math.max(1, d.bbox_y * sy);
     const w = Math.min(d.bbox_w * sx, width - x - 1), h = Math.min(d.bbox_h * sy, height - y - 1);
     if (w <= 0 || h <= 0) continue;
@@ -22,7 +23,7 @@ export function drawDetections(ctx, detections, nativeWidth, nativeHeight, width
     for (const [cx, cy, dx, dy] of [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]]) {
       ctx.beginPath(); ctx.moveTo(cx + dx * corner, cy); ctx.lineTo(cx,cy); ctx.lineTo(cx,cy + dy * corner); ctx.stroke();
     }
-    const label = `${d.class_label.toUpperCase()}${d.track_id != null ? ` / ${String(d.track_id).padStart(2,'0')}` : ''}  ${(d.confidence * 100).toFixed(0)}%`;
+    const label = d.track_id != null ? `ID ${String(d.track_id).padStart(2,'0')}` : `${d.class_label.toUpperCase()}  ${(d.confidence * 100).toFixed(0)}%`;
     const labelWidth = Math.min(width - 4, ctx.measureText(label).width + 18), labelHeight = fontSize + 12;
     const labelX = Math.max(2, Math.min(x, width - labelWidth - 2));
     let labelY = Math.max(2, y - labelHeight - 5);
