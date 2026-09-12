@@ -1,15 +1,3 @@
-<!-- Hugging Face Spaces reads this frontmatter when this repo is deployed as a Docker Space. -->
----
-title: VisionLog
-emoji: 🎥
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
-license: agpl-3.0
----
-
 # VisionLog
 
 **YOLO26 object detection on your video → structured detection logs in PostgreSQL →
@@ -76,6 +64,8 @@ See [.env.example](.env.example). Key vars: `DATABASE_URL` (Neon Postgres in pro
 `VISIONLOG_MAX_DURATION_SECONDS`.
 
 ## Deploy (free)
+
+For a Hugging Face Space, copy [`deploy/huggingface/README.md`](deploy/huggingface/README.md) to the **Space repository's root `README.md`**. It contains the Docker SDK and port metadata; keep this GitHub README as the project documentation.
 
 - **App:** Hugging Face Spaces (Docker). The [Dockerfile](Dockerfile) builds the frontend
   and serves API + SPA on `:7860`.
