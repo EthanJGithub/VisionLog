@@ -1,0 +1,81 @@
+{
+  "date": "2026-09-12",
+  "source": "https://github.com/opencv/opencv/blob/4.x/samples/data/vtest.avi",
+  "source_sha256": "45cddc9490be69345cbdab64ca583be65987e864ca408038e648db99e10516cf",
+  "start_frame": 404,
+  "frame_count": 150,
+  "duration_seconds": 15,
+  "hardware": "NVIDIA GeForce RTX 3060",
+  "profiles": [
+    {
+      "name": "baseline",
+      "ultralytics": "8.4.148",
+      "model": "yolo26m.pt",
+      "imgsz": 640,
+      "tracker": {
+        "tracker_type": "bytetrack",
+        "track_high_thresh": 0.25,
+        "track_low_thresh": 0.1,
+        "new_track_thresh": 0.25,
+        "track_buffer": 30,
+        "match_thresh": 0.8,
+        "fuse_score": true
+      },
+      "elapsed_seconds": 9.345,
+      "unique_ids": 11
+    },
+    {
+      "name": "tracktrack",
+      "ultralytics": "8.4.148",
+      "model": "yolo26x.pt",
+      "imgsz": 960,
+      "tracker": {
+        "tracker_type": "tracktrack",
+        "track_high_thresh": 0.4,
+        "track_low_thresh": 0.1,
+        "new_track_thresh": 0.5,
+        "track_buffer": 30,
+        "match_thresh": 0.7,
+        "lost_match_thr": 0.0,
+        "iou_weight": 0.5,
+        "reid_weight": 0.5,
+        "conf_weight": 0.1,
+        "angle_weight": 0.05,
+        "penalty_p": 0.2,
+        "penalty_q": 0.4,
+        "reduce_step": 0.05,
+        "tai_thr": 0.55,
+        "min_track_len": 3,
+        "gmc_method": "sparseOptFlow",
+        "with_reid": true,
+        "model": "auto"
+      },
+      "elapsed_seconds": 12.663,
+      "unique_ids": 8
+    },
+    {
+      "name": "botsort",
+      "ultralytics": "8.4.148",
+      "model": "yolo26x.pt",
+      "imgsz": 960,
+      "tracker": {
+        "tracker_type": "botsort",
+        "track_high_thresh": 0.4,
+        "track_low_thresh": 0.1,
+        "new_track_thresh": 0.5,
+        "track_buffer": 30,
+        "match_thresh": 0.8,
+        "fuse_score": true,
+        "gmc_method": "sparseOptFlow",
+        "proximity_thresh": 0.5,
+        "appearance_thresh": 0.8,
+        "with_reid": true,
+        "model": "auto"
+      },
+      "elapsed_seconds": 12.464,
+      "unique_ids": 8
+    }
+  ],
+  "publication_approved": false,
+  "reason": "Spot review found missing observed people during overlaps and identity instability. No replacement approved. Counts of generated IDs are diagnostics, not accuracy metrics; profiles also use different detector sizes/resolutions."
+}
