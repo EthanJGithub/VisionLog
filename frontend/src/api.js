@@ -1,6 +1,19 @@
 const BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
+let workspaceKey;
+function getWorkspaceKey() {
+  if (!workspaceKey) {
+    try { workspaceKey = localStorage.getItem("visionlog-workspace"); } catch {}
+    if (!/^[a-f0-9]{64}$/.test(workspaceKey || "")) {
+      workspaceKey = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, "0")).join("");
+      try { localStorage.setItem("visionlog-workspace", workspaceKey); } catch {}
+    }
+  }
+  return workspaceKey;
+}
+
 async function req(path, options = {}) {
+  options = {...options, headers: {...options.headers, "X-Workspace-Key": getWorkspaceKey()}};
   const res = await fetch(`${BASE}${path}`, options);
   if (!res.ok) {
     const detail = (await res.json().catch(() => ({}))).detail || res.statusText;

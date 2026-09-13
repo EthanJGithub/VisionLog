@@ -20,6 +20,8 @@ from src.agent import chat_graph  # noqa: E402  (torch-free: langgraph/langchain
 from src.api import schemas  # noqa: E402  (light: pydantic only)
 
 app = FastAPI(title="VisionLog logging API", version="1.0.0")
+from src.api.privacy import isolate_workspace
+app.middleware("http")(isolate_workspace)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )

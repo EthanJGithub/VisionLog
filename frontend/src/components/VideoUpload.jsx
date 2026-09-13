@@ -138,6 +138,15 @@ export default function VideoUpload({ onLogged }) {
     setVideoUrl(URL.createObjectURL(file));
   }
 
+  async function loadExample() {
+    setBusy(true);
+    try {
+      const response = await fetch("/examples/pedestrians.mp4");
+      if (!response.ok) throw new Error("Example could not load");
+      handleFiles([new File([await response.blob()], "pedestrians.mp4", {type: "video/mp4"})]);
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
+
   function onDrop(e) {
     e.preventDefault();
     setDragging(false);
@@ -342,6 +351,8 @@ export default function VideoUpload({ onLogged }) {
         confirmed objects are saved for analysis.
       </p>
 
+      <button type="button" disabled={busy || running} onClick={loadExample}>Load pedestrian example</button>
+      <p className="muted">Video inference stays on your device. Sampled detections and representative object thumbnails are saved to this browser?s workspace for recall. Reset removes your saved runs.</p>
       <TrackingToggle enabled={trackingEnabled} onChange={setTrackingEnabled} disabled={busy || running} />
       <div className="controls">
         <label>

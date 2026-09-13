@@ -16,8 +16,7 @@ Reproduce everything here with: `python -m src.eval.benchmark`.
 | YOLOE-26 (open-vocab) | ~12 M | one-to-many (+JS NMS) | client GPU; 69-class baked vocabulary |
 
 - **Training data (upstream):** COCO (80 classes) for YOLO26; YOLOE adds open-vocabulary
-  pretraining (Objects365 / grounding data). Weights are Ultralytics-pretrained — VisionLog
-  does **not** retrain them (a domain fine-tune is on the roadmap).
+  pretraining (Objects365 / grounding data). Weights are Ultralytics-pretrained — VisionLog uses upstream pretrained base models and also provides the separate Construction-PPE fine-tune documented below.
 - **Task:** object detection (boxes + class + confidence). Tracking adds stable Object IDs.
 - **License:** AGPL-3.0 (see [LICENSE](LICENSE)).
 
@@ -81,7 +80,7 @@ while on CPU it is ~0.5 s/frame. n/s are comfortably real-time.
   classes in the baked 69-word vocabulary.
 - **Not for:** safety-critical decisions; identity/biometric inference (none is performed —
   see [COMPLIANCE.md](COMPLIANCE.md)).
-- **Known limits:** COCO/-vocab classes only (no domain fine-tune yet); accuracy degrades on
+- **Known limits:** COCO/baked-vocabulary classes for the base models; a separate PPE fine-tune is available; accuracy degrades on
   small/occluded/low-light objects; COCO128 eval is a subset; weak/integrated GPUs may not
   hit real-time on m/x. Roadmap (see [ARCHITECTURE.md](ARCHITECTURE.md) §6): domain fine-tune
   with before/after mAP, FP16, tracking-based analytics, arbitrary-text open-vocab.

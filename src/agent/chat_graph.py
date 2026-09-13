@@ -116,10 +116,15 @@ def _json_safe(v: Any) -> Any:
 
 def _run_sql(sql: str) -> list[dict[str, Any]]:
     """Execute a guarded SELECT and return rows as dicts."""
-    with store.get_engine().connect() as conn:
-        result = conn.execute(text(sql))
-        cols = list(result.keys())
-        return [dict(zip(cols, (_json_safe(v) for v in r))) for r in result.fetchall()]
+    eng = store.analytics_engine()
+    try:
+        with eng.connect() as conn:
+            conn.exec_driver_sql("PRAGMA query_only = ON")
+            result = conn.execute(text(sql))
+            cols = list(result.keys())
+            return [dict(zip(cols, (_json_safe(v) for v in r))) for r in result.fetchall()]
+    finally:
+        eng.dispose()
 
 
 def _detections_count() -> int | None:

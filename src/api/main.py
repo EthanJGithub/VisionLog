@@ -31,6 +31,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+from src.api.privacy import isolate_workspace
+app.middleware("http")(isolate_workspace)
 
 
 @app.middleware("http")

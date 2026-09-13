@@ -12,9 +12,10 @@ from typing import Any
 
 from sqlalchemy import (
     Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint,
-    create_engine, func, select,
+    create_engine, func, select, event,
 )
-from sqlalchemy.orm import DeclarativeBase, Session, relationship
+from sqlalchemy.orm import DeclarativeBase, Session, relationship, with_loader_criteria
+from src.privacy import workspace
 from sqlalchemy.pool import StaticPool
 
 from src import config
@@ -32,6 +33,7 @@ class Source(Base):
     __tablename__ = "sources"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_key = Column(String(64), nullable=True, index=True)
     kind = Column(String(16), nullable=False)            # "upload" | "webcam"
     filename = Column(String(512))
     fps = Column(Float)                                   # analysed fps (sample rate)
@@ -125,6 +127,9 @@ def _ensure_columns(eng) -> None:
     insp = inspect(eng)
     if "object_crops" not in insp.get_table_names():
         return
+    if "owner_key" not in {c["name"] for c in insp.get_columns("sources")}:
+        with eng.begin() as conn:
+            conn.execute(text("ALTER TABLE sources ADD COLUMN owner_key VARCHAR(64)"))
     existing = {c["name"] for c in insp.get_columns("object_crops")}
     for col in ("embedding", "caption"):
         if col not in existing:
@@ -144,6 +149,7 @@ def create_source(
 ) -> int:
     with Session(engine or get_engine()) as session:
         src = Source(
+            owner_key=workspace.get(),
             kind=kind,
             filename=filename,
             fps=fps,
@@ -168,6 +174,7 @@ def add_detections(
     if not detections:
         return 0
     with Session(engine or get_engine()) as session:
+        require_source(source_id, session)
         rows = [
             DetectionRow(
                 source_id=source_id,
@@ -279,6 +286,7 @@ def upsert_object_crop(
     """Store one representative thumbnail per (source_id, track_id), keeping the highest-confidence
     crop seen for that object."""
     with Session(engine or get_engine()) as session:
+        require_source(source_id, session)
         existing = session.scalar(
             select(ObjectCrop).where(
                 ObjectCrop.source_id == source_id, ObjectCrop.track_id == track_id
@@ -306,6 +314,7 @@ def _crop_dict(r: "ObjectCrop") -> dict[str, Any]:
 def set_crop_caption(source_id: int, track_id: int, caption: str, *, engine=None) -> None:
     """Persist a Groq-vision caption for one object crop."""
     with Session(engine or get_engine()) as session:
+        require_source(source_id, session)
         crop = session.scalar(
             select(ObjectCrop).where(
                 ObjectCrop.source_id == source_id, ObjectCrop.track_id == track_id
@@ -335,6 +344,7 @@ def set_crop_embeddings(source_id: int, items: list[dict[str, Any]], *, engine=N
     import json as _json
     n = 0
     with Session(engine or get_engine()) as session:
+        require_source(source_id, session)
         for it in items:
             crop = session.scalar(
                 select(ObjectCrop).where(
@@ -387,6 +397,7 @@ def delete_source(source_id: int, engine=None) -> bool:
         src = session.get(Source, source_id)
         if src is None:
             return False
+        session.query(ObjectCrop).filter(ObjectCrop.source_id == source_id).delete(synchronize_session=False)
         session.delete(src)  # cascade removes its detection rows
         session.commit()
         return True
@@ -395,8 +406,48 @@ def delete_source(source_id: int, engine=None) -> bool:
 def clear_all(engine=None) -> dict[str, int]:
     """Delete ALL runs + detections (user-initiated reset). Returns counts removed."""
     with Session(engine or get_engine()) as session:
-        session.query(ObjectCrop).delete()           # children first (FK)
-        dets = session.query(DetectionRow).delete()
-        srcs = session.query(Source).delete()
+        ids = list(session.scalars(select(Source.id)))
+        session.query(ObjectCrop).filter(ObjectCrop.source_id.in_(ids)).delete(synchronize_session=False)
+        dets = session.query(DetectionRow).filter(DetectionRow.source_id.in_(ids)).delete(synchronize_session=False)
+        srcs = session.query(Source).filter(Source.id.in_(ids)).delete(synchronize_session=False)
         session.commit()
         return {"sources": srcs, "detections": dets}
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _scope_queries(state):
+    owner = workspace.get()
+    if owner is not None and state.is_select:
+        owned = select(Source.id).where(Source.owner_key == owner)
+        state.statement = state.statement.options(
+            with_loader_criteria(Source, Source.owner_key == owner, include_aliases=True),
+            with_loader_criteria(DetectionRow, DetectionRow.source_id.in_(owned), include_aliases=True),
+            with_loader_criteria(ObjectCrop, ObjectCrop.source_id.in_(owned), include_aliases=True),
+        )
+
+
+def require_source(source_id, session):
+    if session.get(Source, source_id) is None:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Source not found in this workspace")
+
+
+def analytics_engine():
+    """Materialize only owned rows for generated SQL; it never sees the shared DB.
+
+    The small demo uses a per-query in-memory snapshot. No database credentials,
+    other tenants, stored crops or workspace capabilities enter the SQL context.
+    """
+    eng = create_engine("sqlite:///:memory:", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(eng)
+    with Session(get_engine()) as session, eng.begin() as dest:
+        for model in (Source, DetectionRow):
+            rows = session.scalars(select(model).limit(50001)).all()
+            if len(rows) > 50000:
+                eng.dispose()
+                raise ValueError("Workspace exceeds the 50,000-row analytics limit")
+            values = [{col.name: getattr(row, col.name) for col in model.__table__.columns
+                       if col.name != "owner_key"} for row in rows]
+            if values:
+                dest.execute(model.__table__.insert(), values)
+    return eng
